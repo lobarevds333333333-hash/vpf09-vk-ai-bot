@@ -60,6 +60,7 @@ class Settings:
     openrouter_model: str
     max_message_len: int
     max_history: int
+    max_dialogs: int
     users_dir: Path
 
 
@@ -71,7 +72,8 @@ def load_settings() -> Settings:
         openrouter_model=os.getenv(
             "OPENROUTER_MODEL", "google/gemini-2.5-flash-lite"
         ),
-        max_message_len=int(os.getenv("MAX_MESSAGE_LEN", "4000")),
-        max_history=int(os.getenv("MAX_HISTORY", "100")),
-        users_dir=Path(os.getenv("USERS_DIR", "users")),
+        max_message_len=int(os.getenv("MAX_MESSAGE_LEN") or "4000"),
+        max_history=int(os.getenv("MAX_HISTORY") or "100"),
+        max_dialogs=int(os.getenv("MAX_DIALOGS") or "8"),
+        users_dir=Path(os.getenv("USERS_DIR") or "users"),
     )

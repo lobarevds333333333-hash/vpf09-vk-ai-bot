@@ -22,7 +22,9 @@ class AIService:
     ):
         self.model = model
         self.max_history = max_history
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._client = AsyncOpenAI(
+            api_key=api_key, base_url=base_url, timeout=60.0
+        )
 
     def build_context(
         self,

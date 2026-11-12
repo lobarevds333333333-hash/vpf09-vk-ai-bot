@@ -29,7 +29,7 @@ def main() -> None:
         sys.exit(1)
 
     store = UserStore(settings.users_dir)
-    dialogs = DialogService(store)
+    dialogs = DialogService(store, max_dialogs=settings.max_dialogs)
     facts = FactsService()
     ai = AIService(
         api_key=settings.openrouter_api_key,

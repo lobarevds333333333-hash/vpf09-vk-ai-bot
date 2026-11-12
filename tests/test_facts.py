@@ -20,7 +20,7 @@ class FactsServiceTest(unittest.TestCase):
         self.assertEqual(self.user.facts, [])
 
     def test_fact_saved_and_truncated(self) -> None:
-        self.service.add(self.user, "а" * 250)
+        self.assertIs(self.service.add(self.user, "а" * 250), True)
 
         self.assertEqual(len(self.user.facts), 1)
         self.assertEqual(len(self.user.facts[0]), 200)
@@ -38,16 +38,27 @@ class FactsServiceTest(unittest.TestCase):
         self.assertIs(self.service.add(self.user, "Двадцать первый"), False)
         self.assertEqual(len(self.user.facts), 20)
 
-    def test_build_block_contains_facts(self) -> None:
+    def test_build_block_exact_format(self) -> None:
         self.assertEqual(self.service.build_block(self.user), "")
 
         self.service.add(self.user, "Любит кофе")
         self.service.add(self.user, "Живёт в Москве")
 
-        block = self.service.build_block(self.user)
-        self.assertTrue(block.startswith("Известные факты о пользователе:\n- "))
-        self.assertIn("Любит кофе", block)
-        self.assertIn("Живёт в Москве", block)
+        self.assertEqual(
+            self.service.build_block(self.user),
+            "Известные факты о пользователе:\n"
+            "- Любит кофе\n"
+            "- Живёт в Москве",
+        )
+
+    def test_clear_removes_all_facts(self) -> None:
+        self.service.add(self.user, "Любит кофе")
+        self.service.add(self.user, "Живёт в Москве")
+
+        self.service.clear(self.user)
+
+        self.assertEqual(self.user.facts, [])
+        self.assertEqual(self.service.build_block(self.user), "")
 
 
 if __name__ == "__main__":

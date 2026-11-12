@@ -12,8 +12,9 @@ from storage.user_store import UserStore
 
 
 class DialogService:
-    def __init__(self, store: UserStore):
+    def __init__(self, store: UserStore, max_dialogs: int = 8):
         self.store = store
+        self.max_dialogs = max_dialogs
 
     def _find(self, user: UserProfile, dialog_id: str) -> Dialog:
         for dialog in user.dialogs:
@@ -25,6 +26,8 @@ class DialogService:
         return self._find(user, user.active_dialog_id)
 
     def create(self, user: UserProfile, title: str | None = None) -> Dialog:
+        if len(user.dialogs) >= self.max_dialogs:
+            raise ValueError("Достигнут лимит диалогов")
         dialog = Dialog(
             id=uuid.uuid4().hex[:8],
             title=title if title is not None else f"Диалог {len(user.dialogs) + 1}",

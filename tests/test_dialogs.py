@@ -1,9 +1,11 @@
 """Тесты сервиса диалогов: создание, удаление, переименование, режимы."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+from keyboards.menus import dialogs_menu
 from models.entities import Message
 from services.dialog_service import DialogService
 from storage.user_store import UserStore
@@ -58,6 +60,27 @@ class DialogServiceTest(unittest.TestCase):
 
         self.assertEqual(dialog.mode_id, "teacher")
         self.assertEqual(second.mode_id, "assistant")
+
+    def test_create_limit_is_eight(self) -> None:
+        for _ in range(7):
+            self.service.create(self.user)
+        self.assertEqual(len(self.user.dialogs), 8)
+
+        with self.assertRaises(ValueError) as context:
+            self.service.create(self.user)
+
+        self.assertEqual(str(context.exception), "Достигнут лимит диалогов")
+        self.assertEqual(len(self.user.dialogs), 8)
+
+    def test_dialogs_menu_with_eight_dialogs_fits_ten_rows(self) -> None:
+        for _ in range(7):
+            self.service.create(self.user)
+
+        keyboard = dialogs_menu(self.user.dialogs, self.user.active_dialog_id)
+        rows = json.loads(keyboard.get_json())["buttons"]
+
+        self.assertEqual(len(self.user.dialogs), 8)
+        self.assertLessEqual(len(rows), 10)
 
     def test_clear_history(self) -> None:
         self.user.dialogs[0].messages.append(Message(role="user", content="Привет"))

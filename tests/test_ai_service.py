@@ -1,6 +1,7 @@
 """Тесты AI-сервиса OpenRouter: контекст, лимит истории, фолбэк."""
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from config.settings import NO_MARKDOWN_RULE
@@ -47,12 +48,30 @@ class AIServiceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx[-1], {"role": "user", "content": "привет"})
 
+    async def test_success_path_strips_content(self) -> None:
+        self.service._client.chat.completions.create = AsyncMock(
+            return_value=SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="  ответ  ")
+                    )
+                ]
+            )
+        )
+
+        answer = await self.service.ask("Ты помощник", "", self.history, "привет")
+
+        self.assertEqual(answer, "ответ")
+
     async def test_api_error_returns_fallback(self) -> None:
         self.service._client.chat.completions.create = AsyncMock(
             side_effect=Exception("network down")
         )
 
-        answer = await self.service.ask("Ты помощник", "", self.history, "привет")
+        with self.assertLogs("services.ai_service", level="ERROR"):
+            answer = await self.service.ask(
+                "Ты помощник", "", self.history, "привет"
+            )
 
         self.assertEqual(answer, AIService.FALLBACK_TEXT)
 
