@@ -60,7 +60,8 @@ def build_labeler(
 
         @wraps(handler)
         async def wrapper(message: Message) -> None:
-            async with locks.get(message.peer_id):
+            # Блокировка по владельцу изменяемого профиля (user_of → from_id)
+            async with locks.get(message.from_id or message.peer_id):
                 await handler(message)
 
         return wrapper
@@ -263,7 +264,7 @@ def build_labeler(
         user = user_of(message)
         active = active_dialog(user)
         mode_id = payload_of(message).get("id")
-        if mode_id not in MODES:
+        if not isinstance(mode_id, str) or mode_id not in MODES:
             await reply(
                 message,
                 "Режим не найден.",

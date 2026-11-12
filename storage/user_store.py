@@ -84,6 +84,12 @@ class UserStore:
 
     def save(self, user: UserProfile) -> None:
         self.users_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name == "posix":
+            # mkdir не ужимает уже существующий каталог — пробуем явно
+            try:
+                os.chmod(self.users_dir, 0o700)
+            except OSError:
+                pass
         path = self._path(user.user_id)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(
