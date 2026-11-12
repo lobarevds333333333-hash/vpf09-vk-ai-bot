@@ -58,6 +58,7 @@ class Settings:
     vk_token: str
     openrouter_api_key: str
     openrouter_model: str
+    openrouter_base_url: str
     max_message_len: int
     max_history: int
     max_dialogs: int
@@ -72,6 +73,8 @@ def load_settings() -> Settings:
         openrouter_model=os.getenv(
             "OPENROUTER_MODEL", "google/gemini-2.5-flash-lite"
         ),
+        openrouter_base_url=os.getenv("OPENROUTER_BASE_URL")
+        or "https://openrouter.ai/api/v1",
         max_message_len=int(os.getenv("MAX_MESSAGE_LEN") or "4000"),
         max_history=int(os.getenv("MAX_HISTORY") or "100"),
         max_dialogs=int(os.getenv("MAX_DIALOGS") or "8"),

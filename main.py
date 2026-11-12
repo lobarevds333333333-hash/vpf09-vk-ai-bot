@@ -34,6 +34,7 @@ def main() -> None:
     ai = AIService(
         api_key=settings.openrouter_api_key,
         model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
         max_history=settings.max_history,
     )
     state_dispenser = BuiltinStateDispenser()

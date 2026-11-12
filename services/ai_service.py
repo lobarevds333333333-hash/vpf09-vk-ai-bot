@@ -1,4 +1,4 @@
-"""Сервис AI-ответов через OpenRouter с фолбэком при ошибках."""
+"""Сервис AI-ответов через OpenAI-совместимого провайдера с фолбэком."""
 
 import logging
 
@@ -61,5 +61,5 @@ class AIService:
             )
             return response.choices[0].message.content.strip()
         except Exception:
-            logger.error("OpenRouter request failed", exc_info=True)
+            logger.error("AI request failed", exc_info=True)
             return self.FALLBACK_TEXT
