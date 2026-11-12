@@ -35,6 +35,7 @@ class ImportsTest(unittest.TestCase):
             for button in row
         ]
         self.assertIn("Ментор по Python", mode_labels)
+        self.assertLessEqual(len(modes_data["buttons"]), 6)
 
         self.assertEqual(RenameState.WAIT_NAME, "rename_wait_name")
         self.assertTrue(callable(build_labeler))

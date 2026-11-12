@@ -40,12 +40,15 @@ def main_menu() -> Keyboard:
 
 
 def dialogs_menu(dialogs: list[Dialog], active_id: str) -> Keyboard:
-    # shortcut: ВК допускает 10 рядов кнопок, здесь N диалогов + 2 ряда;
-    # при > 8 диалогах понадобится пагинация
+    # inline-клавиатура ВК: не больше 6 рядов; диалоги — по 2 в ряд.
+    # При 8 диалогах: 4 ряда + 2 ряда действий = 6.
     keyboard = Keyboard(inline=True)
-    for dialog in dialogs:
+    for index, dialog in enumerate(dialogs):
         title = "✅ " + dialog.title if dialog.id == active_id else dialog.title
         keyboard.add(Text(_fit(title), payload=_cmd_id("switch", dialog.id)))
+        if index % 2 == 1:
+            keyboard.row()
+    if len(dialogs) % 2 == 1:
         keyboard.row()
     keyboard.add(
         Text("✏️ Переименовать", payload=_cmd_id("rename", active_id)),
@@ -66,9 +69,13 @@ def dialogs_menu(dialogs: list[Dialog], active_id: str) -> Keyboard:
 
 def modes_menu(current: str) -> Keyboard:
     keyboard = Keyboard(inline=True)
-    for mode in MODES.values():
+    modes = list(MODES.values())
+    for index, mode in enumerate(modes):
         title = "✅ " + mode.title if mode.id == current else mode.title
         keyboard.add(Text(_fit(title), payload=_cmd_id("mode", mode.id)))
+        if index % 2 == 1:
+            keyboard.row()
+    if len(modes) % 2 == 1:
         keyboard.row()
     keyboard.add(Text("◀️ Назад", payload=_cmd("back")))
     return keyboard

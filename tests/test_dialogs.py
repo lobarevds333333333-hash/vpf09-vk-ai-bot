@@ -72,7 +72,7 @@ class DialogServiceTest(unittest.TestCase):
         self.assertEqual(str(context.exception), "Достигнут лимит диалогов")
         self.assertEqual(len(self.user.dialogs), 8)
 
-    def test_dialogs_menu_with_eight_dialogs_fits_ten_rows(self) -> None:
+    def test_dialogs_menu_with_eight_dialogs_fits_six_rows(self) -> None:
         for _ in range(7):
             self.service.create(self.user)
 
@@ -80,7 +80,7 @@ class DialogServiceTest(unittest.TestCase):
         rows = json.loads(keyboard.get_json())["buttons"]
 
         self.assertEqual(len(self.user.dialogs), 8)
-        self.assertLessEqual(len(rows), 10)
+        self.assertLessEqual(len(rows), 6)
 
     def test_clear_history(self) -> None:
         self.user.dialogs[0].messages.append(Message(role="user", content="Привет"))
