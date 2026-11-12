@@ -1,0 +1,7 @@
+.env
+users/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.bak
