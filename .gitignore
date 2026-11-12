@@ -1,7 +1,38 @@
+# Environment & secrets
 .env
+.env.local
+.env.*.local
+*.env
+.webhook_secret
+
+# Runtime data
 users/
+.bak
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
-.bak
+*.sqlite
+*.db
+
+# Node.js / Next.js
+node_modules/
+.next/
+dist/
+build/
+.cache/
+
+# System
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
