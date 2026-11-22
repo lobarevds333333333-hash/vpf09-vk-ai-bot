@@ -22,7 +22,18 @@ concurrency:
 
 jobs:
   review:
-    if: ${{ github.event.sender.type != 'Bot' }}
+    if: >-
+      ${{
+      github.event.sender.type != 'Bot' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'issue_comment' ||
+        (github.event.issue.pull_request != null &&
+         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+         (startsWith(github.event.comment.body, '/review') ||
+          startsWith(github.event.comment.body, '/ask') ||
+          startsWith(github.event.comment.body, '/describe') ||
+          startsWith(github.event.comment.body, '/improve'))))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -51,8 +62,6 @@ jobs:
           config.reasoning_effort: "xhigh"
           config.additional_reasoning_effort_models: '["qwen3.8-flash"]'
           litellm.extra_headers: '{"x-opencode-session":"ses_pr_agent_${{ github.event.pull_request.number || github.event.issue.number }}"}'
-          litellm.suppress_debug_info: "false"
-          LITELLM_LOG: DEBUG
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "false"
           github_action_config.auto_improve: "false"
