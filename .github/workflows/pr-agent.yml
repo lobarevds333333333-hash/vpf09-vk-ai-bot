@@ -32,12 +32,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_KEY: ${{ secrets.TEST_CODEX }}
-          OPENAI__KEY: ${{ secrets.TEST_CODEX }}
-          OPENAI__API_BASE: https://opencode.ai/inference/go/openai/v1
-          config.model: openai/deepseek-v4.1-flash
+          OPENAI_API_BASE: https://opencode.ai/inference/go/openai/v1
+          config.model: openai/qwen3.8-flash
           config.fallback_models: "[]"
           config.custom_model_max_tokens: "100000"
-          config.reasoning_effort: "low"
+          config.reasoning_effort: "xhigh"
+          config.additional_reasoning_effort_models: '["qwen3.8-flash"]'
           litellm.extra_headers: '{"x-opencode-session":"ses_pr_agent_${{ github.event.pull_request.number || github.event.issue.number }}"}'
           litellm.suppress_debug_info: "false"
           LITELLM_LOG: DEBUG
