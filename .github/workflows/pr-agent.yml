@@ -31,11 +31,13 @@ jobs:
         uses: docker://pragent/pr-agent@sha256:8f1df6fa8a98e7d24be30d9b80208a927b30b5bfac88a7ae1fe24c68b47b3f08
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENCODE_API_KEY: ${{ secrets.TEST_CODEX }}
-          config.model: opencode_go/deepseek-v4.1-flash
+          OPENAI_KEY: ${{ secrets.TEST_CODEX }}
+          OPENAI.API_BASE: https://opencode.ai/inference/go/openai/v1
+          config.model: openai/deepseek-v4.1-flash
+          config.fallback_models: "[]"
           config.custom_model_max_tokens: "100000"
           config.reasoning_effort: "low"
-          litellm.add_session_id_to_requests: "true"
+          litellm.extra_headers: '{"x-opencode-session":"ses_pr_agent_${{ github.event.pull_request.number || github.event.issue.number }}"}'
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "false"
           github_action_config.auto_improve: "false"
