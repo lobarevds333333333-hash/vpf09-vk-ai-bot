@@ -27,12 +27,24 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Check OpenCode Go endpoint
+        env:
+          OPENCODE_API_KEY: ${{ secrets.TEST_CODEX }}
+        run: |
+          curl --silent --show-error --fail-with-body \
+            --header "Authorization: Bearer $OPENCODE_API_KEY" \
+            --header "x-opencode-session: ses_pr_agent_${{ github.event.pull_request.number || github.event.issue.number }}" \
+            "https://opencode.ai/inference/go/v1/models" \
+            --output /dev/null \
+            --write-out "OpenCode Go models endpoint: %{http_code}\n"
+
       - name: Review pull request
         uses: docker://pragent/pr-agent@sha256:8f1df6fa8a98e7d24be30d9b80208a927b30b5bfac88a7ae1fe24c68b47b3f08
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_KEY: ${{ secrets.TEST_CODEX }}
           OPENAI_API_BASE: https://opencode.ai/inference/go/openai/v1
+          OPENAI_BASE_URL: https://opencode.ai/inference/go/openai/v1
           config.model: openai/qwen3.8-flash
           config.fallback_models: "[]"
           config.custom_model_max_tokens: "100000"
