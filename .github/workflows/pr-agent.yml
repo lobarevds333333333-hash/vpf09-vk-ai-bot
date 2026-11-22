@@ -29,7 +29,7 @@ jobs:
     steps:
       - name: Check OpenCode Go endpoint
         env:
-          OPENCODE_API_KEY: ${{ secrets.TEST_CODEX }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           curl --silent --show-error --fail-with-body \
             --header "Authorization: Bearer $OPENCODE_API_KEY" \
@@ -42,7 +42,7 @@ jobs:
         uses: docker://pragent/pr-agent@sha256:8f1df6fa8a98e7d24be30d9b80208a927b30b5bfac88a7ae1fe24c68b47b3f08
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_KEY: ${{ secrets.TEST_CODEX }}
+          OPENAI_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_BASE: https://opencode.ai/inference/go/openai/v1
           OPENAI_BASE_URL: https://opencode.ai/inference/go/openai/v1
           config.model: openai/qwen3.8-flash
