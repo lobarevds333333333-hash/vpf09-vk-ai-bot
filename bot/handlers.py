@@ -410,12 +410,6 @@ def build_labeler(
             )
             return
 
-        if text.lower().startswith(REMEMBER_PREFIX):
-            await remember_fact(
-                message, user, text[len(REMEMBER_PREFIX):].strip()
-            )
-            return
-
         if len(text) > settings.max_message_len:
             await reply(
                 message,
@@ -423,6 +417,12 @@ def build_labeler(
                 f"при лимите {settings.max_message_len}. "
                 "Сократите текст и попробуйте снова.",
                 keyboard=main_menu().get_json(),
+            )
+            return
+
+        if text.lower().startswith(REMEMBER_PREFIX):
+            await remember_fact(
+                message, user, text[len(REMEMBER_PREFIX):].strip()
             )
             return
 
