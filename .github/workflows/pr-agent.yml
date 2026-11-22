@@ -33,6 +33,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENCODE_API_KEY: ${{ secrets.TEST_CODEX }}
           config.model: opencode_go/deepseek-v4.1-flash
+          config.custom_model_max_tokens: "100000"
           config.reasoning_effort: "low"
           litellm.add_session_id_to_requests: "true"
           github_action_config.auto_review: "true"
