@@ -1,9 +1,9 @@
 param(
-    [int]$Port = 8791,
-    [int]$IntervalSeconds = 30
+    [int]$Port = 8791
 )
 
 $ErrorActionPreference = "Continue"
+$IntervalSeconds = 30
 $StopFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".codex\viewer-watchdog.stop"
 $Mutex = New-Object System.Threading.Mutex($false, "Local\CodexApiHostProxyWatchdog")
 if (-not $Mutex.WaitOne(0)) {
@@ -16,12 +16,15 @@ try {
             Remove-Item -LiteralPath $StopFile -Force
             break
         }
+        $Cycle = [System.Diagnostics.Stopwatch]::StartNew()
         & (Join-Path $PSScriptRoot "start_proxy.ps1") -Port $Port | Out-Null
-        for ($Second = 0; $Second -lt $IntervalSeconds; $Second++) {
+        while ($Cycle.Elapsed.TotalSeconds -lt $IntervalSeconds) {
             if (Test-Path -LiteralPath $StopFile) {
                 break
             }
-            Start-Sleep -Seconds 1
+            $Remaining = $IntervalSeconds - $Cycle.Elapsed.TotalSeconds
+            $DelayMilliseconds = [int]([Math]::Max(50, [Math]::Min(1000, $Remaining * 1000)))
+            Start-Sleep -Milliseconds $DelayMilliseconds
         }
     }
 }

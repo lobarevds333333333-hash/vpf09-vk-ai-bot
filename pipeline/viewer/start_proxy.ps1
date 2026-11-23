@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Called by watchdog.ps1; keep this script idempotent and bounded by health checks.
 $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Python = Join-Path $RepositoryRoot ".venv\Scripts\python.exe"
 $HealthUrl = "http://127.0.0.1:$Port/health"
