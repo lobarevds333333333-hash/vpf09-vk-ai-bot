@@ -1,6 +1,7 @@
 """Тесты loopback proxy и установки Codex-агента."""
 
 import json
+import socket
 import tempfile
 import threading
 import tomllib
@@ -126,6 +127,20 @@ class ResponsesSanitizerTest(unittest.TestCase):
 
         self.assertEqual(415, raised.exception.code)
 
+    def test_incomplete_unauthorized_request_does_not_hang(self) -> None:
+        server = self.start_proxy()
+        with socket.create_connection(("127.0.0.1", server.server_port), timeout=5) as client:
+            client.sendall(
+                b"POST /v1/responses HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: 100\r\n\r\n{}"
+            )
+            client.settimeout(3)
+            response = client.recv(1024)
+
+        self.assertIn(b" 401 ", response.split(b"\r\n", 1)[0])
+
 
 class CoderViewerInstallerTest(unittest.TestCase):
     def test_generated_agent_uses_canonical_contract_and_read_only(self) -> None:
@@ -186,13 +201,14 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("/health", script)
         self.assertIn("VIEWER_PROXY_TOKEN", script)
         self.assertIn("viewer-proxy-token", script)
-        self.assertIn('GetEnvironmentVariable(\n        "APIHOST_API_KEY"', script)
+        self.assertIn('GetEnvironmentVariable("APIHOST_API_KEY", "User")', script)
         self.assertIn("did not become healthy", script)
 
         watchdog = Path("pipeline/viewer/watchdog.ps1").read_text("utf-8")
         self.assertIn("CodexApiHostProxyWatchdog", watchdog)
         self.assertIn("start_proxy.ps1", watchdog)
         self.assertIn("IntervalSeconds", watchdog)
+        self.assertIn("viewer-watchdog.stop", watchdog)
 
 
 if __name__ == "__main__":

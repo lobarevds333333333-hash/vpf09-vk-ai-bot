@@ -139,9 +139,14 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
             if length < 1 or length > MAX_REQUEST_BYTES:
                 self._send_json(413, {"error": "request body size rejected"})
                 return
-            raw_body = self.rfile.read(length)
             if not self._local_auth_ok():
+                self.connection.settimeout(0.5)
+                try:
+                    self.rfile.read(min(length, 8192))
+                except OSError:
+                    pass
                 return
+            raw_body = self.rfile.read(length)
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
             if content_type.lower() != "application/json":
                 self._send_json(415, {"error": "application/json required"})
@@ -166,6 +171,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                 or hmac.compare_digest(bearer, expected)
             ):
                 return True
+            self.close_connection = True
             self._send_json(401, {"error": "viewer proxy token required"})
             return False
 

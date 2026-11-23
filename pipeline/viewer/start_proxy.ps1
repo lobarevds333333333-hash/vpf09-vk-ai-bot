@@ -24,29 +24,25 @@ if (Test-ProxyHealth) {
     exit 0
 }
 
+$UserApiKey = [Environment]::GetEnvironmentVariable("APIHOST_API_KEY", "User")
+if (-not [string]::IsNullOrWhiteSpace($UserApiKey)) {
+    $env:APIHOST_API_KEY = $UserApiKey
+}
 if ([string]::IsNullOrWhiteSpace($env:APIHOST_API_KEY)) {
-    $env:APIHOST_API_KEY = [Environment]::GetEnvironmentVariable(
-        "APIHOST_API_KEY",
-        "User"
-    )
-    if ([string]::IsNullOrWhiteSpace($env:APIHOST_API_KEY)) {
-        Write-Error "APIHOST_API_KEY is not set"
-        exit 1
-    }
+    Write-Error "APIHOST_API_KEY is not set"
+    exit 1
 }
 
+$UserProxyToken = [Environment]::GetEnvironmentVariable("VIEWER_PROXY_TOKEN", "User")
+if (-not [string]::IsNullOrWhiteSpace($UserProxyToken)) {
+    $env:VIEWER_PROXY_TOKEN = $UserProxyToken
+}
+if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN) -and (Test-Path -LiteralPath $TokenFile)) {
+    $env:VIEWER_PROXY_TOKEN = (Get-Content -LiteralPath $TokenFile -Raw).Trim()
+}
 if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN)) {
-    $env:VIEWER_PROXY_TOKEN = [Environment]::GetEnvironmentVariable(
-        "VIEWER_PROXY_TOKEN",
-        "User"
-    )
-    if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN) -and (Test-Path -LiteralPath $TokenFile)) {
-        $env:VIEWER_PROXY_TOKEN = (Get-Content -LiteralPath $TokenFile -Raw).Trim()
-    }
-    if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN)) {
-        Write-Error "VIEWER_PROXY_TOKEN is not set"
-        exit 1
-    }
+    Write-Error "VIEWER_PROXY_TOKEN is not set"
+    exit 1
 }
 
 if (-not (Test-Path -LiteralPath $Python)) {

@@ -9,6 +9,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,6 +20,7 @@ DEFAULT_OUTPUT = Path.home() / ".codex" / "agents" / "coder-viewer.toml"
 DEFAULT_PROXY_SCRIPT = Path(__file__).with_name("start_proxy.ps1")
 DEFAULT_WATCHDOG_SCRIPT = Path(__file__).with_name("watchdog.ps1")
 DEFAULT_TOKEN_PATH = Path.home() / ".codex" / "viewer-proxy-token"
+DEFAULT_WATCHDOG_STOP_PATH = Path.home() / ".codex" / "viewer-watchdog.stop"
 TASK_NAME = "CodexApiHostProxyWatchdog"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -129,9 +131,30 @@ def watchdog_command(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> str:
     )
 
 
+def stop_running_watchdogs(script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
+    command = r"""
+$currentProcess = $PID
+Get-CimInstance Win32_Process |
+    Where-Object {
+        $_.ProcessId -ne $currentProcess -and
+        $_.CommandLine -like ('*' + $env:WATCHDOG_NEEDLE + '*')
+    } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+"""
+    environment = os.environ.copy()
+    environment["WATCHDOG_NEEDLE"] = str(script_path.resolve())
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command", command],
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+
+
 def install_watchdog(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
     import winreg
 
+    stop_running_watchdogs(script_path)
     subprocess.run(
         ["schtasks", "/Delete", "/TN", TASK_NAME, "/F"],
         capture_output=True,
@@ -145,6 +168,7 @@ def install_watchdog(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
             winreg.REG_SZ,
             watchdog_command(script_path=script_path),
         )
+    DEFAULT_WATCHDOG_STOP_PATH.unlink(missing_ok=True)
     creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     subprocess.Popen(
         [
@@ -167,11 +191,15 @@ def install_watchdog(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
 def remove_watchdog() -> None:
     import winreg
 
+    stop_running_watchdogs()
     subprocess.run(
         ["schtasks", "/Delete", "/TN", TASK_NAME, "/F"],
         capture_output=True,
         check=False,
     )
+    DEFAULT_WATCHDOG_STOP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_WATCHDOG_STOP_PATH.write_text("stop\n", encoding="utf-8")
+    time.sleep(7)
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
