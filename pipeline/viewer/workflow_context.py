@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from pipeline.viewer.review_pr import DEFAULT_MAX_DIFF_BYTES
@@ -19,7 +20,10 @@ from pipeline.viewer.review_pr import DEFAULT_MAX_DIFF_BYTES
 API_ROOT = "https://api.github.com"
 JSON_ACCEPT = "application/vnd.github+json"
 DIFF_ACCEPT = "application/vnd.github.v3.diff"
+RAW_ACCEPT = "application/vnd.github.raw+json"
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+MAX_FILE_CONTEXT_CHARS = 120_000
+MAX_TOTAL_FILE_CONTEXT_CHARS = 500_000
 GitHubGet = Callable[[str, str], Any]
 
 
@@ -36,6 +40,7 @@ class PullRequestContext:
     head_sha: str
     diff: str
     changed_files: tuple[str, ...]
+    file_snapshots: dict[str, str]
 
 
 def _request_json_or_text(path: str, accept: str) -> Any:
@@ -56,12 +61,13 @@ def _request_json_or_text(path: str, accept: str) -> Any:
         with urlopen(request, timeout=30) as response:
             body = response.read().decode("utf-8")
     except HTTPError as error:
-        raise ContextError(f"GitHub API вернул HTTP {error.code}") from None
+        safe_path = path.split("?", 1)[0]
+        raise ContextError(f"GitHub API вернул HTTP {error.code}: {safe_path}") from None
     except (TimeoutError, URLError):
         raise ContextError("GitHub API недоступен") from None
     except UnicodeError:
         raise ContextError("GitHub API вернул текст в неизвестной кодировке") from None
-    if accept == DIFF_ACCEPT:
+    if accept in {DIFF_ACCEPT, RAW_ACCEPT}:
         return body
     try:
         return json.loads(body)
@@ -159,6 +165,35 @@ def _changed_files(
     return tuple(dict.fromkeys(files))
 
 
+def _file_snapshots(
+    *,
+    repository: str,
+    head_sha: str,
+    changed_files: tuple[str, ...],
+    github_get: GitHubGet,
+) -> dict[str, str]:
+    snapshots: dict[str, str] = {}
+    total_chars = 0
+    for path in changed_files:
+        encoded_path = quote(path, safe="/")
+        try:
+            content = github_get(
+                f"/repos/{repository}/contents/{encoded_path}?ref={head_sha}",
+                RAW_ACCEPT,
+            )
+        except ContextError:
+            continue
+        if not isinstance(content, str) or "\x00" in content:
+            continue
+        if len(content) > MAX_FILE_CONTEXT_CHARS:
+            content = content[:MAX_FILE_CONTEXT_CHARS] + "\n[file context truncated]\n"
+        if total_chars + len(content) > MAX_TOTAL_FILE_CONTEXT_CHARS:
+            break
+        snapshots[path] = content
+        total_chars += len(content)
+    return snapshots
+
+
 def prepare_context(
     *,
     repository: str,
@@ -199,6 +234,12 @@ def prepare_context(
         number=number,
         github_get=get,
     )
+    file_snapshots = _file_snapshots(
+        repository=repository,
+        head_sha=head_sha,
+        changed_files=changed_files,
+        github_get=get,
+    )
     final = _load_pull_request_details(
         repository=repository,
         number=number,
@@ -224,6 +265,7 @@ def prepare_context(
         head_sha=head_sha,
         diff=diff,
         changed_files=changed_files,
+        file_snapshots=file_snapshots,
     )
 
 
@@ -248,6 +290,10 @@ def write_context(context: PullRequestContext, output_dir: Path) -> None:
     (output_dir / "diff.patch").write_text(context.diff, encoding="utf-8")
     (output_dir / "changed-files.json").write_text(
         json.dumps(context.changed_files, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "file-context.json").write_text(
+        json.dumps(context.file_snapshots, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 

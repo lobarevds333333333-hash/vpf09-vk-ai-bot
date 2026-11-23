@@ -22,8 +22,8 @@ Workflow `PR Agent` добавляет check `PR Agent review`. В этих jobs
 
 После каждого завершения `Tests` workflow `Independent Viewer` запускается по
 `workflow_run` из версии на default branch. Он получает title/body PR, base/head
-SHA, diff и changed files через GitHub API. PR checkout и код из проверяемого SHA
-не исполняются рядом с secret. Trusted reviewer публикует Check Run
+SHA, diff, changed files и полные snapshots изменённых файлов через GitHub API.
+PR checkout и код из проверяемого SHA не исполняются рядом с secret. Trusted reviewer публикует Check Run
 `Independent Viewer (Claude Opus 5.5)` на точный `head_sha`.
 
 Fork PR отклоняется при сопоставлении repository. Для внешнего вклада
@@ -82,7 +82,8 @@ gh secret set APIHOST_API_KEY --repo lobarevds333333333-hash/vpf09-vk-ai-bot
 - `C:\Users\<user>\.codex\agents\coder-viewer.toml`;
 - отдельный случайный token в `C:\Users\<user>\.codex\viewer-proxy-token`;
 - `VIEWER_PROXY_TOKEN` в User environment;
-- задачу `CodexApiHostProxyWatchdog`, которая раз в минуту проверяет health.
+- HKCU Run entry `CodexApiHostProxyWatchdog`, который запускает скрытый loop;
+  он проверяет health раз в 30 секунд и перезапускает proxy после падения.
 
 4. Перезапустите Codex, чтобы provider получил актуальный
    `VIEWER_PROXY_TOKEN`. Запустите adapter и проверьте health:
@@ -93,7 +94,8 @@ Invoke-RestMethod http://127.0.0.1:8791/health
 ```
 
 Ожидаемый ответ: `ok=True`. `start_proxy.ps1` запускает Python скрыто и ждёт
-health; scheduled task повторяет эту проверку после падения процесса.
+health; `watchdog.ps1` удерживается в пользовательской сессии через HKCU Run и
+повторяет эту проверку после падения процесса.
 
 5. Проверьте, что `coder-viewer.toml` совпадает с repository contract:
 
@@ -121,11 +123,12 @@ Compile check:
 2. Запустите `install_coder_viewer` без `--check` и перезапустите Codex.
 3. Выполните `start_proxy.ps1`; при ошибке процесс останавливается, а в stdout
    отсутствует значение ключей.
-4. Запустите задачу вручную:
+4. Переустановите и сразу запустите watchdog через installer:
 
 ```powershell
-Start-ScheduledTask -TaskName CodexApiHostProxyWatchdog
-Get-ScheduledTaskInfo -TaskName CodexApiHostProxyWatchdog
+.venv\Scripts\python.exe -m pipeline.viewer.install_coder_viewer --install-startup
+Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run `
+  -Name CodexApiHostProxyWatchdog
 ```
 
 Proxy принимает только loopback `127.0.0.1`, требует Bearer token или
@@ -185,5 +188,5 @@ viewer artifact содержит `reviewed_sha`, равный текущему `
   комментарии и check run текущего SHA.
 
 Порядок отката: снять viewer check с branch protection, отключить job, сохранив
-код, остановить scheduled task и proxy, восстановить предыдущий
+код, выполнить `install_coder_viewer --remove-startup`, остановить proxy, восстановить предыдущий
 `coder-viewer.toml`, затем при отказе от pipeline удалить secret и token file.

@@ -8,6 +8,7 @@ from pathlib import Path
 from pipeline.viewer.workflow_context import (
     DIFF_ACCEPT,
     JSON_ACCEPT,
+    RAW_ACCEPT,
     ContextError,
     prepare_context,
     resolve_pull_request,
@@ -39,6 +40,8 @@ class WorkflowContextTest(unittest.TestCase):
             calls.append((path, accept))
             if "/commits/" in path:
                 return [pull_request_payload()]
+            if accept == RAW_ACCEPT:
+                return "value = 1\n"
             if path.endswith("/files?per_page=100&page=1"):
                 return [{"filename": "pipeline/viewer/review_pr.py"}]
             if accept == DIFF_ACCEPT:
@@ -57,10 +60,17 @@ class WorkflowContextTest(unittest.TestCase):
             files = json.loads(
                 (Path(temp_dir) / "changed-files.json").read_text("utf-8")
             )
+            file_context = json.loads(
+                (Path(temp_dir) / "file-context.json").read_text("utf-8")
+            )
 
         self.assertEqual(5, context.number)
         self.assertEqual(HEAD_SHA, event["pull_request"]["head"]["sha"])
         self.assertEqual(["pipeline/viewer/review_pr.py"], files)
+        self.assertEqual(
+            "value = 1\n",
+            file_context["pipeline/viewer/review_pr.py"],
+        )
         self.assertIn((f"/repos/{REPOSITORY}/pulls/5", DIFF_ACCEPT), calls)
         self.assertIn(JSON_ACCEPT, {accept for _, accept in calls})
 

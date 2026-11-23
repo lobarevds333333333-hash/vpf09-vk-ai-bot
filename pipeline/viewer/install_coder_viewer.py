@@ -9,6 +9,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -17,8 +18,11 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INSTRUCTIONS = Path(__file__).with_name("instructions.md")
 DEFAULT_OUTPUT = Path.home() / ".codex" / "agents" / "coder-viewer.toml"
 DEFAULT_PROXY_SCRIPT = Path(__file__).with_name("start_proxy.ps1")
+DEFAULT_WATCHDOG_SCRIPT = Path(__file__).with_name("watchdog.ps1")
 DEFAULT_TOKEN_PATH = Path.home() / ".codex" / "viewer-proxy-token"
+DEFAULT_WATCHDOG_STOP_PATH = Path.home() / ".codex" / "viewer-watchdog.stop"
 TASK_NAME = "CodexApiHostProxyWatchdog"
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def render_agent_toml(instructions: str) -> str:
@@ -119,40 +123,103 @@ def ensure_viewer_proxy_token(
     return token
 
 
-def scheduled_task_command(action: str, *, script_path: Path = DEFAULT_PROXY_SCRIPT) -> list[str]:
-    if action in {"status", "delete"}:
-        arguments = ["schtasks", "/Query" if action == "status" else "/Delete"]
-        arguments.extend(["/TN", TASK_NAME])
-        if action == "delete":
-            arguments.append("/F")
-        return arguments
-    if action != "create":
-        raise ValueError(f"unknown scheduled task action: {action}")
-
+def watchdog_command(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> str:
     powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    task_command = (
+    return (
         f'"{powershell}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden '
         f'-File "{script_path.resolve()}"'
     )
-    return [
-        "schtasks",
-        "/Create",
-        "/TN",
-        TASK_NAME,
-        "/SC",
-        "MINUTE",
-        "/MO",
-        "1",
-        "/TR",
-        task_command,
-        "/F",
-    ]
 
 
-def run_scheduled_task_command(action: str, *, script_path: Path) -> int:
-    command = scheduled_task_command(action, script_path=script_path)
-    result = subprocess.run(command, check=False)
-    return result.returncode
+def stop_running_watchdogs(script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
+    command = r"""
+$currentProcess = $PID
+Get-CimInstance Win32_Process |
+    Where-Object {
+        $_.ProcessId -ne $currentProcess -and
+        $_.CommandLine -like ('*' + $env:WATCHDOG_NEEDLE + '*')
+    } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+"""
+    environment = os.environ.copy()
+    environment["WATCHDOG_NEEDLE"] = str(script_path.resolve())
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command", command],
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+
+
+def install_watchdog(*, script_path: Path = DEFAULT_WATCHDOG_SCRIPT) -> None:
+    import winreg
+
+    stop_running_watchdogs(script_path)
+    subprocess.run(
+        ["schtasks", "/Delete", "/TN", TASK_NAME, "/F"],
+        capture_output=True,
+        check=False,
+    )
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+        winreg.SetValueEx(
+            key,
+            TASK_NAME,
+            0,
+            winreg.REG_SZ,
+            watchdog_command(script_path=script_path),
+        )
+    DEFAULT_WATCHDOG_STOP_PATH.unlink(missing_ok=True)
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path.resolve()),
+        ],
+        cwd=str(script_path.resolve().parents[2]),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creation_flags,
+        close_fds=True,
+    )
+
+
+def remove_watchdog() -> None:
+    import winreg
+
+    stop_running_watchdogs()
+    subprocess.run(
+        ["schtasks", "/Delete", "/TN", TASK_NAME, "/F"],
+        capture_output=True,
+        check=False,
+    )
+    DEFAULT_WATCHDOG_STOP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_WATCHDOG_STOP_PATH.write_text("stop\n", encoding="utf-8")
+    time.sleep(7)
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            RUN_KEY,
+            access=winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.DeleteValue(key, TASK_NAME)
+    except FileNotFoundError:
+        pass
+
+
+def watchdog_status() -> bool:
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, TASK_NAME)
+    except FileNotFoundError:
+        return False
+    return isinstance(value, str) and bool(value.strip())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -160,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instructions", type=Path, default=DEFAULT_INSTRUCTIONS)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--proxy-script", type=Path, default=DEFAULT_PROXY_SCRIPT)
+    parser.add_argument("--watchdog-script", type=Path, default=DEFAULT_WATCHDOG_SCRIPT)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--install-startup", action="store_true")
     parser.add_argument("--remove-startup", action="store_true")
@@ -192,11 +260,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"coder-viewer записан: {args.output}")
 
     if args.install_startup:
-        return run_scheduled_task_command("create", script_path=args.proxy_script)
+        try:
+            install_watchdog(script_path=args.watchdog_script)
+        except OSError as error:
+            print(f"Не удалось установить watchdog: {error}", file=sys.stderr)
+            return 1
+        print("watchdog установлен")
+        return 0
     if args.remove_startup:
-        return run_scheduled_task_command("delete", script_path=args.proxy_script)
+        remove_watchdog()
+        print("watchdog удалён из автозапуска")
+        return 0
     if args.startup_status:
-        return run_scheduled_task_command("status", script_path=args.proxy_script)
+        installed = watchdog_status()
+        print(f"watchdog={'installed' if installed else 'missing'}")
+        return 0 if installed else 1
     return 0
 
 

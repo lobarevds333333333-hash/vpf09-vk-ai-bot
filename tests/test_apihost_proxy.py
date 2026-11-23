@@ -1,6 +1,7 @@
 """Тесты loopback proxy и установки Codex-агента."""
 
 import json
+import socket
 import tempfile
 import threading
 import tomllib
@@ -18,7 +19,7 @@ from pipeline.viewer.apihost_responses_proxy import (
 from pipeline.viewer.install_coder_viewer import (
     ensure_viewer_proxy_token,
     render_agent_toml,
-    scheduled_task_command,
+    watchdog_command,
 )
 
 
@@ -69,6 +70,7 @@ class ResponsesSanitizerTest(unittest.TestCase):
                         "properties": {"namespace": {"type": "string"}},
                     },
                 },
+                {"type": "namespace"},
                 {"type": "web_search"},
                 {"type": "web_search_preview"},
             ]
@@ -81,10 +83,10 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.assertEqual("read_file", sanitized["tools"][0]["name"])
         self.assertIn("namespace", sanitized["tools"][0]["parameters"]["properties"])
 
-    def test_streaming_is_disabled_for_predictable_json_proxy_response(self) -> None:
+    def test_streaming_request_is_preserved(self) -> None:
         sanitized = sanitize_responses_payload({"stream": True, "input": "test"})
 
-        self.assertIs(False, sanitized["stream"])
+        self.assertIs(True, sanitized["stream"])
 
     def test_health_endpoint_works_without_upstream_request(self) -> None:
         server = self.start_proxy()
@@ -124,6 +126,20 @@ class ResponsesSanitizerTest(unittest.TestCase):
             urlopen(request, timeout=5)
 
         self.assertEqual(415, raised.exception.code)
+
+    def test_incomplete_unauthorized_request_does_not_hang(self) -> None:
+        server = self.start_proxy()
+        with socket.create_connection(("127.0.0.1", server.server_port), timeout=5) as client:
+            client.sendall(
+                b"POST /v1/responses HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: 100\r\n\r\n{}"
+            )
+            client.settimeout(3)
+            response = client.recv(1024)
+
+        self.assertIn(b" 401 ", response.split(b"\r\n", 1)[0])
 
 
 class CoderViewerInstallerTest(unittest.TestCase):
@@ -171,14 +187,11 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertEqual(first, values["VIEWER_PROXY_TOKEN"])
         self.assertEqual(first, read_proxy_token_file(token_path))
 
-    def test_watchdog_task_is_hidden_and_checks_proxy_each_minute(self) -> None:
-        command = scheduled_task_command("create", script_path=Path("pipeline/viewer/start_proxy.ps1"))
-        command_text = " ".join(command)
+    def test_watchdog_startup_is_hidden_and_uses_loop_script(self) -> None:
+        command_text = watchdog_command(script_path=Path("pipeline/viewer/watchdog.ps1"))
 
-        self.assertIn("MINUTE", command)
-        self.assertIn("1", command)
         self.assertIn("-WindowStyle Hidden", command_text)
-        self.assertIn("start_proxy.ps1", command_text)
+        self.assertIn("watchdog.ps1", command_text)
 
     def test_start_script_is_hidden_and_waits_for_health(self) -> None:
         script = Path("pipeline/viewer/start_proxy.ps1").read_text("utf-8")
@@ -188,7 +201,14 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("/health", script)
         self.assertIn("VIEWER_PROXY_TOKEN", script)
         self.assertIn("viewer-proxy-token", script)
+        self.assertIn('GetEnvironmentVariable("APIHOST_API_KEY", "User")', script)
         self.assertIn("did not become healthy", script)
+
+        watchdog = Path("pipeline/viewer/watchdog.ps1").read_text("utf-8")
+        self.assertIn("CodexApiHostProxyWatchdog", watchdog)
+        self.assertIn("start_proxy.ps1", watchdog)
+        self.assertIn("IntervalSeconds", watchdog)
+        self.assertIn("viewer-watchdog.stop", watchdog)
 
 
 if __name__ == "__main__":
