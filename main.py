@@ -20,7 +20,11 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    settings = load_settings()
+    try:
+        settings = load_settings()
+    except ValueError as error:
+        logger.error("Ошибка конфигурации: %s", error)
+        sys.exit(1)
     if not settings.vk_token:
         logger.error("VK_TOKEN не задан в .env — запуск невозможен")
         sys.exit(1)
