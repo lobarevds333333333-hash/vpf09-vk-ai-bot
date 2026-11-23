@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -13,6 +14,14 @@ from urllib.request import Request, urlopen
 APIHOST_RESPONSES_URL = "https://api.apihost.one/v1/responses"
 VIEWER_MODEL = "claude-opus-5.5"
 VIEWER_REASONING_EFFORT = "high"
+VIEWER_SCHEMA_PATH = Path(__file__).with_name("verdict.schema.json")
+
+
+def load_viewer_schema() -> dict[str, Any]:
+    schema = json.loads(VIEWER_SCHEMA_PATH.read_text("utf-8"))
+    schema.pop("$schema", None)
+    schema.pop("$id", None)
+    return schema
 
 
 class ApiHostError(RuntimeError):
@@ -48,6 +57,14 @@ class ApiHostClient:
             "instructions": instructions,
             "input": prompt,
             "reasoning": {"effort": VIEWER_REASONING_EFFORT},
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "viewer_verdict",
+                    "schema": load_viewer_schema(),
+                    "strict": True,
+                }
+            },
             "max_output_tokens": 12000,
             "store": False,
         }
