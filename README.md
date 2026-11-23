@@ -160,7 +160,7 @@ reviewer, branch protection, proxy и обновление PR summary. Ожид�
 `OK`.
 
 GitHub CI использует `actions/checkout@v7`, `actions/setup-python@v7` и
-`actions/upload-artifact@v7`. Полный runbook независимого review и защиты `main`
+`actions/upload-artifact@v7`, закреплённые полными commit SHA. Полный runbook независимого review и защиты `main`
 находится в `docs/coding-pipeline.md`.
 
 Тест fallback намеренно вызывает ошибку API: сообщение «AI request failed»
