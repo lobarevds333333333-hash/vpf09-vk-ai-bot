@@ -1,10 +1,9 @@
 param(
-    [int]$Port = 8791,
-    [ValidateRange(5, 300)]
-    [int]$IntervalSeconds = 30
+    [int]$Port = 8791
 )
 
 $ErrorActionPreference = "Continue"
+$IntervalSeconds = 30
 $StopFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".codex\viewer-watchdog.stop"
 $Mutex = New-Object System.Threading.Mutex($false, "Local\CodexApiHostProxyWatchdog")
 if (-not $Mutex.WaitOne(0)) {
