@@ -1,6 +1,6 @@
 param(
     [int]$Port = 8791,
-    [int]$IntervalSeconds = 30
+    [int]$IntervalSeconds = 3600
 )
 
 $ErrorActionPreference = "Continue"
