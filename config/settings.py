@@ -51,6 +51,8 @@ MODES: dict[str, Mode] = {
 }
 
 DEFAULT_MODE_ID = "assistant"
+VK_MAX_MESSAGE_LEN = 4000
+VK_MAX_DIALOGS = 8
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,26 @@ class Settings:
     max_dialogs: int
     users_dir: Path
 
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_message_len <= VK_MAX_MESSAGE_LEN:
+            raise ValueError(
+                f"MAX_MESSAGE_LEN должен быть от 1 до {VK_MAX_MESSAGE_LEN}"
+            )
+        if self.max_history < 1:
+            raise ValueError("MAX_HISTORY должен быть больше нуля")
+        if not 1 <= self.max_dialogs <= VK_MAX_DIALOGS:
+            raise ValueError(f"MAX_DIALOGS должен быть от 1 до {VK_MAX_DIALOGS}")
+
+
+def _int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError as error:
+        raise ValueError(f"{name} должен быть целым числом") from error
+
 
 def load_settings() -> Settings:
     load_dotenv()
@@ -75,8 +97,8 @@ def load_settings() -> Settings:
         ),
         openrouter_base_url=os.getenv("OPENROUTER_BASE_URL")
         or "https://openrouter.ai/api/v1",
-        max_message_len=int(os.getenv("MAX_MESSAGE_LEN") or "4000"),
-        max_history=int(os.getenv("MAX_HISTORY") or "100"),
-        max_dialogs=int(os.getenv("MAX_DIALOGS") or "8"),
+        max_message_len=_int_env("MAX_MESSAGE_LEN", VK_MAX_MESSAGE_LEN),
+        max_history=_int_env("MAX_HISTORY", 100),
+        max_dialogs=_int_env("MAX_DIALOGS", VK_MAX_DIALOGS),
         users_dir=Path(os.getenv("USERS_DIR") or "users"),
     )
