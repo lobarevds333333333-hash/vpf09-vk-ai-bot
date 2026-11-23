@@ -43,7 +43,10 @@ keyboards/menus.py           — inline-клавиатуры: меню, диал
 bot/handlers.py              — обработчики кнопок и текста, FSM переименования, лимиты
 utils/typing.py              — индикатор «печатает…» (messages.setActivity)
 utils/locks.py               — блокировки по владельцу профиля (from_id): сериализация действий пользователя
-tests/                       — 31 unittest-тест без сети
+pipeline/viewer/             — независимый reviewer, loopback adapter и установщик
+scripts/                     — операционные скрипты, включая branch protection
+docs/coding-pipeline.md      — runbook независимого viewer и branch protection
+tests/                       — 83 unittest-теста без внешней сети
 requirements.txt             — зависимости
 .env.example                 — шаблон переменных окружения без секретов
 users/                       — runtime-данные пользователей (создаётся автоматически,
@@ -146,13 +149,19 @@ Linux / macOS (после активации `.venv`):
 python -m unittest discover -s tests -v
 ```
 
-31 тест, сеть не требуется. Проверяются: импорт модулей и главное меню, шесть
+83 теста, внешняя сеть не требуется. Проверяются: импорт модулей и главное меню, шесть
 режимов (включая «Ментор по Python»), хранилище и восстановление битого JSON,
 починка профилей без диалогов и с несуществующим активным диалогом,
 CRUD диалогов и лимит в 8 диалогов (меню укладывается в 6 рядов inline-клавиатуры),
 сериализация действий пользователя блокировкой по владельцу профиля (`from_id`), лимиты и
 дедупликация фактов, вставка фактов в system prompt, лимит истории, успешный
-ответ и fallback при ошибке API. Ожидаемый результат: `OK`.
+ответ и fallback при ошибке API, контракт независимого viewer, fail-closed
+reviewer, branch protection, proxy и обновление PR summary. Ожидаемый результат:
+`OK`.
+
+GitHub CI использует `actions/checkout@v7`, `actions/setup-python@v7` и
+`actions/upload-artifact@v7`. Полный runbook независимого review и защиты `main`
+находится в `docs/coding-pipeline.md`.
 
 Тест fallback намеренно вызывает ошибку API: сообщение «AI request failed»
 уровня ERROR перехватывается `assertLogs` и не считается сбоем.

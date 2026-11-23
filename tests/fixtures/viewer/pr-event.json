@@ -1,0 +1,12 @@
+{
+  "pull_request": {
+    "title": "test: validate independent viewer pipeline",
+    "body": "Проверить полный путь независимого review.",
+    "base": {
+      "sha": "7f59ff5717daec2621082f4ff0c1aeb8ecbf72db"
+    },
+    "head": {
+      "sha": "592ad79c38e35832be4bf7f71c07a946807d4c85"
+    }
+  }
+}

@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -39,7 +39,7 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements.txt
 
       - name: Compile sources
-        run: python -m compileall -q bot config keyboards models services storage utils main.py tests
+        run: python -m compileall -q bot config keyboards models services storage utils pipeline scripts main.py tests
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v

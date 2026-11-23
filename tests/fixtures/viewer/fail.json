@@ -1,0 +1,19 @@
+{
+  "reviewed_sha": "592ad79c38e35832be4bf7f71c07a946807d4c85",
+  "verdict": "FAIL",
+  "evidence": [
+    "python -m unittest tests.test_settings -v: воспроизведено падение проверки"
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "path": "config/settings.py",
+      "line": 42,
+      "evidence": "Отрицательный лимит проходит валидацию.",
+      "action": "Отклонять отрицательные значения до создания Settings."
+    }
+  ],
+  "limitations": [
+    "Windows CI не проверялся в локальном прогоне."
+  ]
+}
