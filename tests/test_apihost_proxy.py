@@ -2,6 +2,7 @@
 
 import json
 import threading
+import tomllib
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
@@ -83,6 +84,16 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn('sandbox_mode = "read-only"', generated)
         self.assertIn("Не редактируй файлы", generated)
         self.assertIn("verdict.schema.json", generated)
+
+    def test_instruction_quotes_and_triple_apostrophes_produce_valid_toml(self) -> None:
+        generated = render_agent_toml("Инструкция заканчивается кавычкой ' и ''' внутри.")
+
+        parsed = tomllib.loads(generated)
+
+        self.assertEqual(
+            "Инструкция заканчивается кавычкой ' и ''' внутри.",
+            parsed["developer_instructions"],
+        )
 
     def test_watchdog_task_is_hidden_and_checks_proxy_each_minute(self) -> None:
         command = scheduled_task_command("create", script_path=Path("pipeline/viewer/start_proxy.ps1"))

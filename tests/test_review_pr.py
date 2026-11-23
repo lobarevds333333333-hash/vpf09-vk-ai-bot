@@ -196,6 +196,28 @@ class ReviewRunnerTest(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertEqual(0, client.calls)
 
+    def test_invalid_expected_sha_writes_non_contract_error_artifact(self) -> None:
+        code = run_review(
+            workspace=ROOT,
+            event_path=FIXTURES / "pr-event.json",
+            expected_sha="bad-sha",
+            base_sha=BASE_SHA,
+            tests_status="Ubuntu: success",
+            artifact_dir=self.artifact_dir,
+            max_diff_bytes=100_000,
+            timeout_seconds=30,
+            dry_run=False,
+            client=FakeClient(output=""),
+            repository=FakeRepository(),
+        )
+
+        self.assertEqual(2, code)
+        self.assertFalse((self.artifact_dir / "viewer-verdict.json").exists())
+        error_artifact = json.loads(
+            (self.artifact_dir / "viewer-error.json").read_text("utf-8")
+        )
+        self.assertEqual("infrastructure_error", error_artifact["status"])
+
     def test_timeout_fails_closed(self) -> None:
         code = self.run_with(
             FakeClient(error=ApiHostError("ApiHost не ответил до таймаута"))

@@ -231,6 +231,7 @@ def write_review_artifacts(
     artifact_dir: Path,
     base_sha: str,
 ) -> tuple[Path, Path]:
+    validate_verdict(result)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     json_path = artifact_dir / "viewer-verdict.json"
     summary_path = artifact_dir / "viewer-summary.md"
@@ -284,6 +285,51 @@ def _failure_verdict(*, expected_sha: str, message: str) -> dict[str, Any]:
         "findings": [],
         "limitations": ["Автоматический review не дал достоверного PASS."],
     }
+
+
+def write_failure_artifacts(
+    *,
+    expected_sha: str,
+    message: str,
+    artifact_dir: Path,
+    base_sha: str,
+) -> tuple[Path, Path] | Path:
+    if not FULL_SHA.fullmatch(expected_sha):
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        error_path = artifact_dir / "viewer-error.json"
+        error_path.write_text(
+            json.dumps(
+                {
+                    "status": "infrastructure_error",
+                    "error": message,
+                    "base_sha": base_sha,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return error_path
+    result = _failure_verdict(expected_sha=expected_sha, message=message)
+    return write_review_artifacts(
+        result=result,
+        artifact_dir=artifact_dir,
+        base_sha=base_sha,
+    )
+
+
+def _emit_failure_artifacts(
+    *, paths: tuple[Path, Path] | Path, message: str
+) -> None:
+    _emit("Viewer verdict: FAIL (infrastructure/input)")
+    _emit(f"Reason: {message}")
+    if isinstance(paths, Path):
+        _emit(f"Viewer error artifact: {paths}")
+        return
+    json_path, summary_path = paths
+    _emit(f"Viewer artifact: {json_path}")
+    _emit(f"Viewer summary: {summary_path}")
 
 
 def write_dry_run_artifacts(
@@ -379,29 +425,23 @@ def run_review(
         return 0 if result["verdict"] == "PASS" else 1
     except (ReviewInputError, ApiHostError, ContractError, OSError) as error:
         message = str(error)
-        result = _failure_verdict(expected_sha=expected_sha, message=message)
-        json_path, summary_path = write_review_artifacts(
-            result=result,
+        paths = write_failure_artifacts(
+            expected_sha=expected_sha,
+            message=message,
             artifact_dir=artifact_dir,
             base_sha=base_sha,
         )
-        _emit("Viewer verdict: FAIL (infrastructure/input)")
-        _emit(f"Reason: {message}")
-        _emit(f"Viewer artifact: {json_path}")
-        _emit(f"Viewer summary: {summary_path}")
+        _emit_failure_artifacts(paths=paths, message=message)
         return 2
     except Exception as error:
         message = f"непредвиденная ошибка {type(error).__name__}"
-        result = _failure_verdict(expected_sha=expected_sha, message=message)
-        json_path, summary_path = write_review_artifacts(
-            result=result,
+        paths = write_failure_artifacts(
+            expected_sha=expected_sha,
+            message=message,
             artifact_dir=artifact_dir,
             base_sha=base_sha,
         )
-        _emit("Viewer verdict: FAIL (infrastructure/input)")
-        _emit(f"Reason: {message}")
-        _emit(f"Viewer artifact: {json_path}")
-        _emit(f"Viewer summary: {summary_path}")
+        _emit_failure_artifacts(paths=paths, message=message)
         return 2
 
 

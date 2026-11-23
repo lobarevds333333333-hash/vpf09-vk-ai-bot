@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -18,8 +19,7 @@ TASK_NAME = "CodexApiHostProxyWatchdog"
 
 
 def render_agent_toml(instructions: str) -> str:
-    if "'''" in instructions:
-        raise ValueError("canonical instructions содержат несовместимый TOML delimiter")
+    instructions_literal = json.dumps(instructions.rstrip(), ensure_ascii=False)
     return f'''name = "coder-viewer"
 description = "Независимый вьювер работы кодового агента. Проверяет исходную задачу, diff, тесты и наблюдаемый результат; выдаёт доказательный PASS или FAIL и не меняет код."
 model = "claude-opus-5.5"
@@ -28,9 +28,7 @@ model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 nickname_candidates = ["Claude Viewer", "Independent Viewer", "Coder Reviewer"]
 
-developer_instructions = \'\'\'
-{instructions.rstrip()}
-\'\'\'
+developer_instructions = {instructions_literal}
 
 [model_providers.apihost]
 name = "ApiHost via Codex adapter"

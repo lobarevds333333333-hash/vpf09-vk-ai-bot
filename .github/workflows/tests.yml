@@ -91,13 +91,18 @@ jobs:
         continue-on-error: true
         env:
           APIHOST_API_KEY: ${{ secrets.APIHOST_API_KEY }}
+          TESTS_RESULT: ${{ needs.unittest.result }}
         run: |
+          if [[ "$TESTS_RESULT" != "success" ]]; then
+            echo "::error::Required Python test matrix did not succeed."
+            exit 1
+          fi
           python -m pipeline.viewer.review_pr \
             --workspace "$GITHUB_WORKSPACE" \
             --event-path "$GITHUB_EVENT_PATH" \
             --expected-sha "${{ github.event.pull_request.head.sha }}" \
             --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --tests-status "Python 3.11 on ubuntu-latest: success; Python 3.11 on windows-latest: success" \
+            --tests-status "Python 3.11 Ubuntu/Windows matrix: $TESTS_RESULT" \
             --artifact-dir "viewer-artifacts" \
             --timeout-seconds 180
 
