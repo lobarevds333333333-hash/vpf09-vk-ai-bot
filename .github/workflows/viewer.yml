@@ -76,9 +76,10 @@ jobs:
             --event-path "$GITHUB_WORKSPACE/viewer-input/pr-event.json" \
             --diff-path "$GITHUB_WORKSPACE/viewer-input/diff.patch" \
             --changed-files-path "$GITHUB_WORKSPACE/viewer-input/changed-files.json" \
+            --file-context-path "$GITHUB_WORKSPACE/viewer-input/file-context.json" \
             --expected-sha "${{ steps.context.outputs.head_sha }}" \
             --base-sha "${{ steps.context.outputs.base_sha }}" \
-            --tests-status "GitHub Actions Tests workflow: ${{ github.event.workflow_run.conclusion }}" \
+            --tests-status "GitHub Actions Tests workflow: ${{ github.event.workflow_run.conclusion }}; run: ${{ github.event.workflow_run.html_url }}" \
             --artifact-dir "$GITHUB_WORKSPACE/viewer-artifacts" \
             --timeout-seconds 180
 

@@ -48,9 +48,13 @@ class FakeClient:
         self.output = output
         self.error = error
         self.calls = 0
+        self.prompts: list[str] = []
 
-    def review(self, **_: object) -> str:
+    def review(self, **kwargs: object) -> str:
         self.calls += 1
+        prompt = kwargs.get("prompt")
+        if isinstance(prompt, str):
+            self.prompts.append(prompt)
         if self.error:
             raise self.error
         return self.output
@@ -308,9 +312,12 @@ class ReviewRunnerTest(unittest.TestCase):
     def test_external_diff_context_does_not_execute_pr_checkout(self) -> None:
         diff_path = Path(self.temp_dir.name) / "diff.patch"
         files_path = Path(self.temp_dir.name) / "changed-files.json"
+        file_context_path = Path(self.temp_dir.name) / "file-context.json"
         diff_path.write_text("diff --git a/a.py b/a.py\n+value = 1\n", encoding="utf-8")
         files_path.write_text('["a.py"]', encoding="utf-8")
+        file_context_path.write_text('{"a.py":"value = 1\\n"}', encoding="utf-8")
         pass_output = (FIXTURES / "pass.json").read_text("utf-8")
+        client = FakeClient(output=pass_output)
 
         code = run_review(
             workspace=ROOT,
@@ -322,14 +329,18 @@ class ReviewRunnerTest(unittest.TestCase):
             max_diff_bytes=100_000,
             timeout_seconds=30,
             dry_run=False,
-            client=FakeClient(output=pass_output),
+            client=client,
             repository=FakeRepository(error=AssertionError("PR checkout must not run")),
             diff_path=diff_path,
             changed_files_path=files_path,
+            file_context_path=file_context_path,
         )
 
         self.assertEqual(0, code)
         self.assertEqual("PASS", self.load_artifact()["verdict"])
+        self.assertIn("REVIEW_MODE: CI_TRUSTED_INPUT", client.prompts[0])
+        self.assertIn("<changed_file_snapshots>", client.prompts[0])
+        self.assertIn("value = 1", client.prompts[0])
 
 
 class GitRepositoryTest(unittest.TestCase):

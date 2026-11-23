@@ -22,8 +22,8 @@ Workflow `PR Agent` добавляет check `PR Agent review`. В этих jobs
 
 После каждого завершения `Tests` workflow `Independent Viewer` запускается по
 `workflow_run` из версии на default branch. Он получает title/body PR, base/head
-SHA, diff и changed files через GitHub API. PR checkout и код из проверяемого SHA
-не исполняются рядом с secret. Trusted reviewer публикует Check Run
+SHA, diff, changed files и полные snapshots изменённых файлов через GitHub API.
+PR checkout и код из проверяемого SHA не исполняются рядом с secret. Trusted reviewer публикует Check Run
 `Independent Viewer (Claude Opus 5.5)` на точный `head_sha`.
 
 Fork PR отклоняется при сопоставлении repository. Для внешнего вклада

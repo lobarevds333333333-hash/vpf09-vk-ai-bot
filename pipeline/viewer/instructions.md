@@ -33,6 +33,15 @@ branch protection, поэтому проверка должна быть вос�
 - Не публикуй токены, значения secrets, приватные HTTP-заголовки и полные
   ответы внешнего API.
 
+### Trusted CI input
+
+В режиме `CI_TRUSTED_INPUT` metadata, diff, changed files и полные snapshots
+изменённых файлов получены workflow из `main` через GitHub API для неизменяемого
+SHA. Отсутствие repository checkout и shell является архитектурным ограничением
+CI-проверки. Не возвращай `FAIL` только по этой причине: сначала оцени требования,
+diff, snapshots и переданный результат Tests. Если входного контекста достаточно
+для вывода, укажи ограничение в `limitations`, не превращая его в finding.
+
 ## Findings
 
 Каждый finding обязан содержать:
