@@ -20,6 +20,10 @@ Viewer работает на `claude-opus-5.5` с reasoning effort `high`, не 
 Workflow `PR Agent` добавляет check `PR Agent review`. В этих jobs нет
 `APIHOST_API_KEY`.
 
+Все GitHub Actions в `tests.yml` и `viewer.yml` закреплены полным commit SHA.
+Major tag указывается только комментарием рядом с SHA. Regression test не даёт
+вернуть изменяемые `uses: action@vN` references.
+
 После каждого завершения `Tests` workflow `Independent Viewer` запускается по
 `workflow_run` из версии на default branch. Он получает title/body PR, base/head
 SHA, diff, changed files и полные snapshots изменённых файлов через GitHub API.
