@@ -39,6 +39,10 @@ class ViewerWorkflowTest(unittest.TestCase):
         self.assertIn("ref: ${{ github.event.repository.default_branch }}", viewer_workflow)
         self.assertIn("--diff-path", viewer_workflow)
         self.assertIn("--file-context-path", viewer_workflow)
+        self.assertIn(
+            "independent-viewer-${{ github.event.workflow_run.event }}",
+            viewer_workflow,
+        )
         self.assertNotIn("ref: ${{ github.event.workflow_run.head_sha }}", viewer_workflow)
         self.assertNotIn("pull_request_target", viewer_workflow)
 

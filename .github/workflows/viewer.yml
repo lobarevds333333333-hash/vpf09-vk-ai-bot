@@ -13,7 +13,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: independent-viewer-${{ github.event.workflow_run.head_sha }}
+  group: independent-viewer-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 jobs:
