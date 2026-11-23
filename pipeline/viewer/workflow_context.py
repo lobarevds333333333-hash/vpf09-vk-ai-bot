@@ -61,12 +61,13 @@ def _request_json_or_text(path: str, accept: str) -> Any:
         with urlopen(request, timeout=30) as response:
             body = response.read().decode("utf-8")
     except HTTPError as error:
-        raise ContextError(f"GitHub API вернул HTTP {error.code}") from None
+        safe_path = path.split("?", 1)[0]
+        raise ContextError(f"GitHub API вернул HTTP {error.code}: {safe_path}") from None
     except (TimeoutError, URLError):
         raise ContextError("GitHub API недоступен") from None
     except UnicodeError:
         raise ContextError("GitHub API вернул текст в неизвестной кодировке") from None
-    if accept == DIFF_ACCEPT:
+    if accept in {DIFF_ACCEPT, RAW_ACCEPT}:
         return body
     try:
         return json.loads(body)
