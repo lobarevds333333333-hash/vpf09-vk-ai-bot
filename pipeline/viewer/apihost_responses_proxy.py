@@ -23,26 +23,21 @@ REMOVED_TOOL_TYPES = {"web_search", "web_search_preview"}
 logger = logging.getLogger(__name__)
 
 
-def sanitize_responses_payload(value: Any, *, parent_key: str | None = None) -> Any:
-    """Рекурсивно удаляет поля, которые не принимает ApiHost Responses."""
-    if isinstance(value, list):
-        if parent_key == "tools":
-            value = [
-                item
-                for item in value
-                if not (
-                    isinstance(item, dict)
-                    and item.get("type") in REMOVED_TOOL_TYPES
-                )
-            ]
-        return [sanitize_responses_payload(item) for item in value]
-    if isinstance(value, dict):
-        return {
-            key: sanitize_responses_payload(item, parent_key=key)
-            for key, item in value.items()
-            if key not in FORBIDDEN_FIELDS
-        }
-    return value
+def sanitize_responses_payload(value: Any) -> Any:
+    """Удаляет известные несовместимые поля верхнего уровня запроса."""
+    if not isinstance(value, dict):
+        return value
+    sanitized = {key: item for key, item in value.items() if key not in FORBIDDEN_FIELDS}
+    tools = sanitized.get("tools")
+    if isinstance(tools, list):
+        sanitized["tools"] = [
+            tool
+            for tool in tools
+            if not (
+                isinstance(tool, dict) and tool.get("type") in REMOVED_TOOL_TYPES
+            )
+        ]
+    return sanitized
 
 
 class UpstreamError(RuntimeError):
@@ -119,6 +114,10 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                 return
             if not self._local_auth_ok():
                 return
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+            if content_type.lower() != "application/json":
+                self._send_json(415, {"error": "application/json required"})
+                return
             content_length = self.headers.get("Content-Length")
             try:
                 length = int(content_length or "0")
@@ -141,10 +140,13 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
 
         def _local_auth_ok(self) -> bool:
             expected = self.server.proxy_token
-            if not expected:
-                return True
             supplied = self.headers.get("X-Viewer-Proxy-Token", "")
-            if hmac.compare_digest(supplied, expected):
+            authorization = self.headers.get("Authorization", "")
+            bearer = authorization.removeprefix("Bearer ").strip()
+            if expected and (
+                hmac.compare_digest(supplied, expected)
+                or hmac.compare_digest(bearer, expected)
+            ):
                 return True
             self._send_json(401, {"error": "viewer proxy token required"})
             return False
@@ -188,7 +190,7 @@ def build_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     upstream_base_url: str = DEFAULT_UPSTREAM_BASE_URL,
-    proxy_token: str | None = None,
+    proxy_token: str,
 ) -> ProxyServer:
     server = ProxyServer((host, port), make_handler())
     server.upstream = ApiHostUpstream(api_key, upstream_base_url)
@@ -207,8 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     api_key = os.environ.get("APIHOST_API_KEY", "")
+    proxy_token = os.environ.get("VIEWER_PROXY_TOKEN", "")
     if not api_key:
         logger.error("APIHOST_API_KEY не задан; proxy не запущен")
+        return 1
+    if not proxy_token:
+        logger.error("VIEWER_PROXY_TOKEN не задан; proxy не запущен")
         return 1
     try:
         server = build_server(
@@ -216,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
             host=args.host,
             port=args.port,
             upstream_base_url=args.upstream_base_url,
-            proxy_token=os.environ.get("VIEWER_PROXY_TOKEN"),
+            proxy_token=proxy_token,
         )
         logger.info("Viewer proxy listening on http://%s:%s", args.host, args.port)
         server.serve_forever()

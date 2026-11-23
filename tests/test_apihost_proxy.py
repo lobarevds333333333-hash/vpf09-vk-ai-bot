@@ -5,6 +5,8 @@ import threading
 import tomllib
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request
 from urllib.request import urlopen
 
 from pipeline.viewer.apihost_responses_proxy import (
@@ -12,12 +14,21 @@ from pipeline.viewer.apihost_responses_proxy import (
     sanitize_responses_payload,
 )
 from pipeline.viewer.install_coder_viewer import (
+    ensure_viewer_proxy_token,
     render_agent_toml,
     scheduled_task_command,
 )
 
 
 class ResponsesSanitizerTest(unittest.TestCase):
+    def start_proxy(self):
+        server = build_server(api_key="test-only", port=0, proxy_token="proxy-only")
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server
+
     def test_removes_forbidden_fields_recursively(self) -> None:
         payload = {
             "model": "claude-opus-5.5",
@@ -28,7 +39,7 @@ class ResponsesSanitizerTest(unittest.TestCase):
                     "role": "user",
                     "content": "test",
                     "client_metadata": {"nested": True},
-                    "namespace": "nested",
+                    "namespace": "legitimate-nested-value",
                 }
             ],
             "web_search": {"enabled": True},
@@ -40,6 +51,10 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.assertNotIn("namespace", sanitized)
         self.assertNotIn("web_search", sanitized)
         self.assertEqual("test", sanitized["input"][0]["content"])
+        self.assertEqual(
+            "legitimate-nested-value",
+            sanitized["input"][0]["namespace"],
+        )
 
     def test_preserves_function_tools_and_removes_web_search_tool(self) -> None:
         payload = {
@@ -47,7 +62,10 @@ class ResponsesSanitizerTest(unittest.TestCase):
                 {
                     "type": "function",
                     "name": "read_file",
-                    "parameters": {"type": "object"},
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"namespace": {"type": "string"}},
+                    },
                 },
                 {"type": "web_search"},
                 {"type": "web_search_preview"},
@@ -59,18 +77,46 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.assertEqual(1, len(sanitized["tools"]))
         self.assertEqual("function", sanitized["tools"][0]["type"])
         self.assertEqual("read_file", sanitized["tools"][0]["name"])
+        self.assertIn("namespace", sanitized["tools"][0]["parameters"]["properties"])
 
     def test_health_endpoint_works_without_upstream_request(self) -> None:
-        server = build_server(api_key="test-only", port=0)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
+        server = self.start_proxy()
 
         with urlopen(f"http://127.0.0.1:{server.server_port}/health", timeout=5) as response:
             payload = json.load(response)
 
         self.assertEqual({"ok": True}, payload)
+
+    def test_responses_endpoint_requires_local_token(self) -> None:
+        server = self.start_proxy()
+        request = Request(
+            f"http://127.0.0.1:{server.server_port}/v1/responses",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(request, timeout=5)
+
+        self.assertEqual(401, raised.exception.code)
+
+    def test_responses_endpoint_rejects_non_json_content_type(self) -> None:
+        server = self.start_proxy()
+        request = Request(
+            f"http://127.0.0.1:{server.server_port}/v1/responses",
+            data=b"{}",
+            method="POST",
+            headers={
+                "Content-Type": "text/plain",
+                "Authorization": "Bearer proxy-only",
+            },
+        )
+
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(request, timeout=5)
+
+        self.assertEqual(415, raised.exception.code)
 
 
 class CoderViewerInstallerTest(unittest.TestCase):
@@ -82,6 +128,7 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn('model = "claude-opus-5.5"', generated)
         self.assertIn('model_reasoning_effort = "high"', generated)
         self.assertIn('sandbox_mode = "read-only"', generated)
+        self.assertIn('env_key = "VIEWER_PROXY_TOKEN"', generated)
         self.assertIn("Не редактируй файлы", generated)
         self.assertIn("verdict.schema.json", generated)
 
@@ -94,6 +141,22 @@ class CoderViewerInstallerTest(unittest.TestCase):
             "Инструкция заканчивается кавычкой ' и ''' внутри.",
             parsed["developer_instructions"],
         )
+
+    def test_proxy_token_is_generated_once_and_reused(self) -> None:
+        writes: list[tuple[str, str]] = []
+
+        first = ensure_viewer_proxy_token(
+            read_value=lambda _: None,
+            write_value=lambda name, value: writes.append((name, value)),
+        )
+        second = ensure_viewer_proxy_token(
+            read_value=lambda _: None,
+            write_value=lambda name, value: writes.append((name, value)),
+        )
+
+        self.assertEqual(first, second)
+        self.assertGreaterEqual(len(first), 32)
+        self.assertEqual(1, len(writes))
 
     def test_watchdog_task_is_hidden_and_checks_proxy_each_minute(self) -> None:
         command = scheduled_task_command("create", script_path=Path("pipeline/viewer/start_proxy.ps1"))
@@ -110,6 +173,7 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("Start-Process", script)
         self.assertIn("-WindowStyle Hidden", script)
         self.assertIn("/health", script)
+        self.assertIn("VIEWER_PROXY_TOKEN", script)
         self.assertIn("did not become healthy", script)
 
 

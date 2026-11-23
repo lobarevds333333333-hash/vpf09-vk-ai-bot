@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -34,6 +36,7 @@ developer_instructions = {instructions_literal}
 name = "ApiHost via Codex adapter"
 base_url = "http://127.0.0.1:8791/v1"
 wire_api = "responses"
+env_key = "VIEWER_PROXY_TOKEN"
 '''
 
 
@@ -49,6 +52,51 @@ def write_atomic(path: Path, content: str) -> None:
         temporary.write(content)
         temporary_path = Path(temporary.name)
     temporary_path.replace(path)
+
+
+def _read_user_environment(name: str) -> str | None:
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, name)
+    except (ImportError, FileNotFoundError, OSError):
+        return None
+    return value if isinstance(value, str) and value else None
+
+
+def _write_user_environment(name: str, value: str) -> None:
+    import ctypes
+    import winreg
+
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        "Environment",
+        access=winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+    ctypes.windll.user32.SendMessageTimeoutW(
+        0xFFFF,
+        0x001A,
+        0,
+        "Environment",
+        0x0002,
+        5000,
+        ctypes.byref(ctypes.c_ulong()),
+    )
+
+
+def ensure_viewer_proxy_token(
+    *,
+    read_value: Callable[[str], str | None] = _read_user_environment,
+    write_value: Callable[[str, str], None] = _write_user_environment,
+) -> str:
+    token = os.environ.get("VIEWER_PROXY_TOKEN") or read_value("VIEWER_PROXY_TOKEN")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        write_value("VIEWER_PROXY_TOKEN", token)
+    os.environ["VIEWER_PROXY_TOKEN"] = token
+    return token
 
 
 def scheduled_task_command(action: str, *, script_path: Path = DEFAULT_PROXY_SCRIPT) -> list[str]:
@@ -116,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
+        ensure_viewer_proxy_token()
         write_atomic(args.output, generated)
     except OSError as error:
         print(f"Не удалось записать coder-viewer: {error}", file=sys.stderr)

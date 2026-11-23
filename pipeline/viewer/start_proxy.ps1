@@ -22,6 +22,16 @@ if (Test-ProxyHealth) {
     exit 0
 }
 
+if ([string]::IsNullOrWhiteSpace($env:APIHOST_API_KEY)) {
+    Write-Error "APIHOST_API_KEY is not set"
+    exit 1
+}
+
+if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN)) {
+    Write-Error "VIEWER_PROXY_TOKEN is not set"
+    exit 1
+}
+
 if (-not (Test-Path -LiteralPath $Python)) {
     Write-Error "Python environment not found: $Python"
     exit 1
