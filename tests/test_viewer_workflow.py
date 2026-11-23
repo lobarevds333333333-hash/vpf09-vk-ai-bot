@@ -1,5 +1,6 @@
 """Инварианты безопасного разделения untrusted и trusted workflows."""
 
+import re
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,16 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 
 
 class ViewerWorkflowTest(unittest.TestCase):
+    def test_actions_are_pinned_to_full_commit_sha(self) -> None:
+        action_pattern = re.compile(r"uses:\s+(actions/[^@\s]+)@([^\s]+)")
+        for workflow_name in ("tests.yml", "viewer.yml"):
+            workflow = (WORKFLOWS / workflow_name).read_text("utf-8")
+            matches = action_pattern.findall(workflow)
+            self.assertTrue(matches)
+            for action, revision in matches:
+                with self.subTest(workflow=workflow_name, action=action):
+                    self.assertRegex(revision, r"^[0-9a-f]{40}$")
+
     def test_pull_request_tests_never_receive_api_secret(self) -> None:
         tests_workflow = (WORKFLOWS / "tests.yml").read_text("utf-8")
 
