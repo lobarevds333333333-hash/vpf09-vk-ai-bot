@@ -209,6 +209,7 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("start_proxy.ps1", watchdog)
         self.assertIn("IntervalSeconds", watchdog)
         self.assertIn("$IntervalSeconds = 30", watchdog)
+        self.assertIn("[System.Diagnostics.Stopwatch]::StartNew()", watchdog)
         self.assertIn("viewer-watchdog.stop", watchdog)
 
 
