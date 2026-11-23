@@ -56,6 +56,14 @@ class PullRequestMetadata:
     reviewed_sha: str
 
 
+def _emit(line: str) -> None:
+    try:
+        print(line)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or "ascii"
+        print(line.encode(encoding, errors="backslashreplace").decode(encoding))
+
+
 class GitRepository:
     """Читает только проверяемый diff и не меняет repository."""
 
@@ -349,8 +357,8 @@ def run_review(
                 prompt=prompt,
                 changes=changes,
             )
-            print(f"Viewer dry run: {request_path}")
-            print(f"Viewer prompt: {prompt_path}")
+            _emit(f"Viewer dry run: {request_path}")
+            _emit(f"Viewer prompt: {prompt_path}")
             return 0
 
         api_client = client or ApiHostClient()
@@ -365,9 +373,9 @@ def run_review(
             artifact_dir=artifact_dir,
             base_sha=base_sha,
         )
-        print(f"Viewer verdict: {result['verdict']}")
-        print(f"Viewer artifact: {json_path}")
-        print(f"Viewer summary: {summary_path}")
+        _emit(f"Viewer verdict: {result['verdict']}")
+        _emit(f"Viewer artifact: {json_path}")
+        _emit(f"Viewer summary: {summary_path}")
         return 0 if result["verdict"] == "PASS" else 1
     except (ReviewInputError, ApiHostError, ContractError, OSError) as error:
         message = str(error)
@@ -377,10 +385,10 @@ def run_review(
             artifact_dir=artifact_dir,
             base_sha=base_sha,
         )
-        print(f"Viewer verdict: FAIL (infrastructure/input)")
-        print(f"Reason: {message}")
-        print(f"Viewer artifact: {json_path}")
-        print(f"Viewer summary: {summary_path}")
+        _emit("Viewer verdict: FAIL (infrastructure/input)")
+        _emit(f"Reason: {message}")
+        _emit(f"Viewer artifact: {json_path}")
+        _emit(f"Viewer summary: {summary_path}")
         return 2
     except Exception as error:
         message = f"непредвиденная ошибка {type(error).__name__}"
@@ -390,10 +398,10 @@ def run_review(
             artifact_dir=artifact_dir,
             base_sha=base_sha,
         )
-        print("Viewer verdict: FAIL (infrastructure/input)")
-        print(f"Reason: {message}")
-        print(f"Viewer artifact: {json_path}")
-        print(f"Viewer summary: {summary_path}")
+        _emit("Viewer verdict: FAIL (infrastructure/input)")
+        _emit(f"Reason: {message}")
+        _emit(f"Viewer artifact: {json_path}")
+        _emit(f"Viewer summary: {summary_path}")
         return 2
 
 

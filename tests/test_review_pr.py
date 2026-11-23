@@ -222,6 +222,28 @@ class ReviewRunnerTest(unittest.TestCase):
         self.assertEqual("FAIL", artifact["verdict"])
         self.assertIn("невалидный JSON", artifact["evidence"][0])
 
+    def test_russian_cli_output_survives_cp1252_stream(self) -> None:
+        class Cp1252Stream:
+            encoding = "cp1252"
+
+            def __init__(self) -> None:
+                self.output = ""
+
+            def write(self, text: str) -> int:
+                text.encode(self.encoding)
+                self.output += text
+                return len(text)
+
+            def flush(self) -> None:
+                return None
+
+        stream = Cp1252Stream()
+        with patch("sys.stdout", stream):
+            code = self.run_with(FakeClient(output="not json"))
+
+        self.assertEqual(2, code)
+        self.assertIn("Viewer verdict: FAIL", stream.output)
+
     def test_oversized_diff_is_rejected_before_api(self) -> None:
         class OversizedRepository(FakeRepository):
             def read_changes(self, **kwargs: object) -> ChangedCode:
