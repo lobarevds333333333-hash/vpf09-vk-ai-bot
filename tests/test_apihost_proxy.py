@@ -208,6 +208,8 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("CodexApiHostProxyWatchdog", watchdog)
         self.assertIn("start_proxy.ps1", watchdog)
         self.assertIn("IntervalSeconds", watchdog)
+        self.assertIn("ValidateRange(5, 300)", watchdog)
+        self.assertIn("$IntervalSeconds = 30", watchdog)
         self.assertIn("viewer-watchdog.stop", watchdog)
 
 
