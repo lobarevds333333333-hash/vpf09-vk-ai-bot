@@ -305,6 +305,32 @@ class ReviewRunnerTest(unittest.TestCase):
         self.assertIn("Ubuntu: success", prompt)
         self.assertIn("example.py", prompt)
 
+    def test_external_diff_context_does_not_execute_pr_checkout(self) -> None:
+        diff_path = Path(self.temp_dir.name) / "diff.patch"
+        files_path = Path(self.temp_dir.name) / "changed-files.json"
+        diff_path.write_text("diff --git a/a.py b/a.py\n+value = 1\n", encoding="utf-8")
+        files_path.write_text('["a.py"]', encoding="utf-8")
+        pass_output = (FIXTURES / "pass.json").read_text("utf-8")
+
+        code = run_review(
+            workspace=ROOT,
+            event_path=FIXTURES / "pr-event.json",
+            expected_sha=HEAD_SHA,
+            base_sha=BASE_SHA,
+            tests_status="trusted workflow: success",
+            artifact_dir=self.artifact_dir,
+            max_diff_bytes=100_000,
+            timeout_seconds=30,
+            dry_run=False,
+            client=FakeClient(output=pass_output),
+            repository=FakeRepository(error=AssertionError("PR checkout must not run")),
+            diff_path=diff_path,
+            changed_files_path=files_path,
+        )
+
+        self.assertEqual(0, code)
+        self.assertEqual("PASS", self.load_artifact()["verdict"])
+
 
 class GitRepositoryTest(unittest.TestCase):
     def test_head_mismatch_is_rejected(self) -> None:

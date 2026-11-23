@@ -12,21 +12,32 @@ Viewer работает на `claude-opus-5.5` с reasoning effort `high`, не 
 
 ## CI на GitHub
 
-Для pull request из ветки этого же repository workflow `Tests` запускает:
+Для pull request из ветки этого же repository workflow `Tests` запускает только:
 
 1. `Python 3.11 on ubuntu-latest`;
 2. `Python 3.11 on windows-latest`;
-3. `Independent Viewer (Claude Opus 5.5)` только после успеха обеих платформ.
 
-Workflow `PR Agent` добавляет check `PR Agent review`. Fork PR не получает
-`APIHOST_API_KEY`: viewer guard завершает job ошибкой. Для внешнего вклада
+Workflow `PR Agent` добавляет check `PR Agent review`. В этих jobs нет
+`APIHOST_API_KEY`.
+
+После каждого завершения `Tests` workflow `Independent Viewer` запускается по
+`workflow_run` из версии на default branch. Он получает title/body PR, base/head
+SHA, diff и changed files через GitHub API. PR checkout и код из проверяемого SHA
+не исполняются рядом с secret. Trusted reviewer публикует Check Run
+`Independent Viewer (Claude Opus 5.5)` на точный `head_sha`.
+
+Fork PR отклоняется при сопоставлении repository. Для внешнего вклада
 поддерживаемый путь — same-repository branch после ручной проверки владельцем.
+
+При первом внедрении `viewer.yml` становится активным только после появления в
+`main`. Bootstrap PR проверяется локальными тестами и PR-Agent; первый реальный
+viewer PASS выполняется на следующем same-repository PR.
 
 Перед HTTP-запросом viewer проверяет:
 
-- полный `reviewed_sha` из GitHub event;
-- `git rev-parse HEAD == reviewed_sha`;
-- связь base/head SHA;
+- полный `reviewed_sha` из workflow run;
+- совпадение head SHA до и после загрузки PR data;
+- связь base/head SHA из GitHub API;
 - лимит diff;
 - непустой статус матрицы tests.
 

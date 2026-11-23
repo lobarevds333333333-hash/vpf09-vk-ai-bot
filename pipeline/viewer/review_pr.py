@@ -144,6 +144,42 @@ def _require_full_sha(value: str, field: str) -> None:
         raise ReviewInputError(f"{field} должен быть полным 40-символьным SHA")
 
 
+def load_external_changes(
+    *,
+    diff_path: Path,
+    changed_files_path: Path,
+    base_sha: str,
+    expected_sha: str,
+    max_diff_bytes: int,
+) -> ChangedCode:
+    _require_full_sha(expected_sha, "expected_sha")
+    _require_full_sha(base_sha, "base_sha")
+    try:
+        diff = diff_path.read_text("utf-8")
+        changed_files_payload = json.loads(changed_files_path.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise ReviewInputError("не удалось прочитать внешний diff context") from None
+    diff_bytes = len(diff.encode("utf-8"))
+    if diff_bytes > max_diff_bytes:
+        raise ReviewInputError(
+            f"diff {diff_bytes} bytes превышает лимит {max_diff_bytes} bytes; "
+            "разделите PR на меньшие изменения"
+        )
+    if not isinstance(changed_files_payload, list):
+        raise ReviewInputError("changed files должны быть JSON-массивом")
+    changed_files = tuple(
+        item for item in changed_files_payload if isinstance(item, str) and item
+    )
+    if not changed_files:
+        raise ReviewInputError("diff context не содержит изменённых файлов")
+    return ChangedCode(
+        base_sha=base_sha,
+        reviewed_sha=expected_sha,
+        diff=diff,
+        changed_files=changed_files,
+    )
+
+
 def load_pr_metadata(event_path: Path) -> PullRequestMetadata:
     try:
         payload = json.loads(event_path.read_text("utf-8"))
@@ -376,6 +412,8 @@ def run_review(
     dry_run: bool,
     client: ViewerClient | None = None,
     repository: GitRepository | Any | None = None,
+    diff_path: Path | None = None,
+    changed_files_path: Path | None = None,
 ) -> int:
     try:
         _require_full_sha(expected_sha, "expected_sha")
@@ -385,12 +423,25 @@ def run_review(
         metadata = load_pr_metadata(event_path)
         if metadata.base_sha != base_sha or metadata.reviewed_sha != expected_sha:
             raise ReviewInputError("SHA в GitHub event не совпадают с проверяемым scope")
-        repo = repository or GitRepository(workspace)
-        changes = repo.read_changes(
-            base_sha=base_sha,
-            expected_sha=expected_sha,
-            max_diff_bytes=max_diff_bytes,
-        )
+        if (diff_path is None) != (changed_files_path is None):
+            raise ReviewInputError(
+                "diff_path и changed_files_path должны передаваться вместе"
+            )
+        if diff_path is not None and changed_files_path is not None:
+            changes = load_external_changes(
+                diff_path=diff_path,
+                changed_files_path=changed_files_path,
+                base_sha=base_sha,
+                expected_sha=expected_sha,
+                max_diff_bytes=max_diff_bytes,
+            )
+        else:
+            repo = repository or GitRepository(workspace)
+            changes = repo.read_changes(
+                base_sha=base_sha,
+                expected_sha=expected_sha,
+                max_diff_bytes=max_diff_bytes,
+            )
         instructions = INSTRUCTIONS_PATH.read_text("utf-8")
         prompt = build_prompt(
             metadata=metadata,
@@ -452,6 +503,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--base-sha", required=True)
     parser.add_argument("--tests-status", required=True)
+    parser.add_argument("--diff-path", type=Path)
+    parser.add_argument("--changed-files-path", type=Path)
     parser.add_argument("--artifact-dir", type=Path, default=Path("viewer-artifacts"))
     parser.add_argument("--max-diff-bytes", type=int, default=DEFAULT_MAX_DIFF_BYTES)
     parser.add_argument("--timeout-seconds", type=int, default=180)
@@ -471,6 +524,10 @@ def main(argv: list[str] | None = None) -> int:
         max_diff_bytes=args.max_diff_bytes,
         timeout_seconds=args.timeout_seconds,
         dry_run=args.dry_run,
+        diff_path=args.diff_path.resolve() if args.diff_path else None,
+        changed_files_path=(
+            args.changed_files_path.resolve() if args.changed_files_path else None
+        ),
     )
 
 

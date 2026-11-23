@@ -1,0 +1,130 @@
+name: Independent Viewer
+
+on:
+  workflow_run:
+    workflows:
+      - Tests
+    types:
+      - completed
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: independent-viewer-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Independent Viewer (Claude Opus 5.5)
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out trusted reviewer
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Record failed tests
+        id: tests_gate
+        if: github.event.workflow_run.conclusion != 'success'
+        working-directory: trusted
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pipeline.viewer.post_check \
+            --repository "$GITHUB_REPOSITORY" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --verdict-path "$GITHUB_WORKSPACE/viewer-artifacts/viewer-verdict.json" \
+            --summary-path "$GITHUB_WORKSPACE/viewer-artifacts/viewer-summary.md" \
+            --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo "::error::Tests workflow did not succeed."
+          exit 1
+
+      - name: Resolve pull request data
+        id: context
+        working-directory: trusted
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pipeline.viewer.workflow_context \
+            --repository "$GITHUB_REPOSITORY" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --output-dir "$GITHUB_WORKSPACE/viewer-input" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Review exact pull request SHA
+        id: viewer
+        continue-on-error: true
+        working-directory: trusted
+        env:
+          APIHOST_API_KEY: ${{ secrets.APIHOST_API_KEY }}
+        run: |
+          python -m pipeline.viewer.review_pr \
+            --workspace trusted \
+            --event-path "$GITHUB_WORKSPACE/viewer-input/pr-event.json" \
+            --diff-path "$GITHUB_WORKSPACE/viewer-input/diff.patch" \
+            --changed-files-path "$GITHUB_WORKSPACE/viewer-input/changed-files.json" \
+            --expected-sha "${{ steps.context.outputs.head_sha }}" \
+            --base-sha "${{ steps.context.outputs.base_sha }}" \
+            --tests-status "GitHub Actions Tests workflow: ${{ github.event.workflow_run.conclusion }}" \
+            --artifact-dir "$GITHUB_WORKSPACE/viewer-artifacts" \
+            --timeout-seconds 180
+
+      - name: Update pull request summary
+        if: >-
+          always() &&
+          steps.context.outcome == 'success' &&
+          hashFiles('viewer-artifacts/viewer-summary.md') != ''
+        working-directory: trusted
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
+        run: |
+          python -m pipeline.viewer.post_summary \
+            --summary-path "$GITHUB_WORKSPACE/viewer-artifacts/viewer-summary.md"
+
+      - name: Publish exact SHA check
+        id: post_check
+        if: always() && steps.tests_gate.outcome != 'failure'
+        working-directory: trusted
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pipeline.viewer.post_check \
+            --repository "$GITHUB_REPOSITORY" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --verdict-path "$GITHUB_WORKSPACE/viewer-artifacts/viewer-verdict.json" \
+            --summary-path "$GITHUB_WORKSPACE/viewer-artifacts/viewer-summary.md" \
+            --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Upload viewer artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-viewer-${{ github.event.workflow_run.head_sha }}
+          path: viewer-artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Enforce viewer verdict
+        if: always()
+        env:
+          TESTS_OUTCOME: ${{ steps.tests_gate.outcome }}
+          VIEWER_OUTCOME: ${{ steps.viewer.outcome }}
+          CHECK_OUTCOME: ${{ steps.post_check.outcome }}
+        run: |
+          test "$TESTS_OUTCOME" != "failure"
+          test "$VIEWER_OUTCOME" = "success"
+          test "$CHECK_OUTCOME" = "success"
