@@ -17,6 +17,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INSTRUCTIONS = Path(__file__).with_name("instructions.md")
 DEFAULT_OUTPUT = Path.home() / ".codex" / "agents" / "coder-viewer.toml"
 DEFAULT_PROXY_SCRIPT = Path(__file__).with_name("start_proxy.ps1")
+DEFAULT_TOKEN_PATH = Path.home() / ".codex" / "viewer-proxy-token"
 TASK_NAME = "CodexApiHostProxyWatchdog"
 
 
@@ -90,11 +91,30 @@ def ensure_viewer_proxy_token(
     *,
     read_value: Callable[[str], str | None] = _read_user_environment,
     write_value: Callable[[str, str], None] = _write_user_environment,
+    token_path: Path = DEFAULT_TOKEN_PATH,
 ) -> str:
-    token = os.environ.get("VIEWER_PROXY_TOKEN") or read_value("VIEWER_PROXY_TOKEN")
+    file_token = None
+    try:
+        file_token = token_path.read_text("utf-8").strip()
+    except OSError:
+        pass
+    registry_token = read_value("VIEWER_PROXY_TOKEN")
+    token = (
+        os.environ.get("VIEWER_PROXY_TOKEN")
+        or registry_token
+        or file_token
+    )
     if not token:
         token = secrets.token_urlsafe(32)
+    if registry_token != token:
         write_value("VIEWER_PROXY_TOKEN", token)
+    if file_token != token:
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(token_path, token + "\n")
+        try:
+            token_path.chmod(0o600)
+        except OSError:
+            pass
     os.environ["VIEWER_PROXY_TOKEN"] = token
     return token
 

@@ -1,6 +1,7 @@
 """Тесты loopback proxy и установки Codex-агента."""
 
 import json
+import tempfile
 import threading
 import tomllib
 import unittest
@@ -11,6 +12,7 @@ from urllib.request import urlopen
 
 from pipeline.viewer.apihost_responses_proxy import (
     build_server,
+    read_proxy_token_file,
     sanitize_responses_payload,
 )
 from pipeline.viewer.install_coder_viewer import (
@@ -29,7 +31,7 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.addCleanup(server.shutdown)
         return server
 
-    def test_removes_forbidden_fields_recursively(self) -> None:
+    def test_removes_known_top_level_fields(self) -> None:
         payload = {
             "model": "claude-opus-5.5",
             "client_metadata": {"client": "codex"},
@@ -78,6 +80,11 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.assertEqual("function", sanitized["tools"][0]["type"])
         self.assertEqual("read_file", sanitized["tools"][0]["name"])
         self.assertIn("namespace", sanitized["tools"][0]["parameters"]["properties"])
+
+    def test_streaming_is_disabled_for_predictable_json_proxy_response(self) -> None:
+        sanitized = sanitize_responses_payload({"stream": True, "input": "test"})
+
+        self.assertIs(False, sanitized["stream"])
 
     def test_health_endpoint_works_without_upstream_request(self) -> None:
         server = self.start_proxy()
@@ -143,20 +150,26 @@ class CoderViewerInstallerTest(unittest.TestCase):
         )
 
     def test_proxy_token_is_generated_once_and_reused(self) -> None:
-        writes: list[tuple[str, str]] = []
+        values: dict[str, str] = {}
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        token_path = Path(temp_dir.name) / "viewer-proxy-token"
 
         first = ensure_viewer_proxy_token(
-            read_value=lambda _: None,
-            write_value=lambda name, value: writes.append((name, value)),
+            read_value=lambda name: values.get(name),
+            write_value=lambda name, value: values.__setitem__(name, value),
+            token_path=token_path,
         )
         second = ensure_viewer_proxy_token(
-            read_value=lambda _: None,
-            write_value=lambda name, value: writes.append((name, value)),
+            read_value=lambda name: values.get(name),
+            write_value=lambda name, value: values.__setitem__(name, value),
+            token_path=token_path,
         )
 
         self.assertEqual(first, second)
         self.assertGreaterEqual(len(first), 32)
-        self.assertEqual(1, len(writes))
+        self.assertEqual(first, values["VIEWER_PROXY_TOKEN"])
+        self.assertEqual(first, read_proxy_token_file(token_path))
 
     def test_watchdog_task_is_hidden_and_checks_proxy_each_minute(self) -> None:
         command = scheduled_task_command("create", script_path=Path("pipeline/viewer/start_proxy.ps1"))
@@ -174,6 +187,7 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("-WindowStyle Hidden", script)
         self.assertIn("/health", script)
         self.assertIn("VIEWER_PROXY_TOKEN", script)
+        self.assertIn("viewer-proxy-token", script)
         self.assertIn("did not become healthy", script)
 
 

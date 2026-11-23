@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -37,7 +38,17 @@ def sanitize_responses_payload(value: Any) -> Any:
                 isinstance(tool, dict) and tool.get("type") in REMOVED_TOOL_TYPES
             )
         ]
+    if "stream" in sanitized:
+        sanitized["stream"] = False
     return sanitized
+
+
+def read_proxy_token_file(path: Path) -> str:
+    try:
+        token = path.read_text("utf-8").strip()
+    except OSError:
+        return ""
+    return token
 
 
 class UpstreamError(RuntimeError):
@@ -54,7 +65,12 @@ class ApiHostUpstream:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
 
-    def request(self, path: str, *, payload: Any | None = None) -> tuple[int, bytes]:
+    def request(
+        self,
+        path: str,
+        *,
+        payload: Any | None = None,
+    ) -> tuple[int, bytes, str]:
         data = None
         method = "GET"
         if payload is not None:
@@ -73,7 +89,11 @@ class ApiHostUpstream:
         )
         try:
             with urlopen(request, timeout=180) as response:
-                return response.status, response.read()
+                return (
+                    response.status,
+                    response.read(),
+                    response.headers.get_content_type(),
+                )
         except HTTPError as error:
             body = error.read()
             raise UpstreamError(
@@ -153,7 +173,10 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
 
         def _proxy(self, path: str, payload: Any | None) -> None:
             try:
-                status, body = self.server.upstream.request(path, payload=payload)
+                status, body, content_type = self.server.upstream.request(
+                    path,
+                    payload=payload,
+                )
             except UpstreamError as error:
                 self._send_bytes(
                     error.status,
@@ -162,7 +185,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                 )
                 logger.error("upstream request failed with status %s", error.status)
                 return
-            self._send_bytes(status, body, content_type="application/json")
+            self._send_bytes(status, body, content_type=content_type)
 
         def _send_json(self, status: int, payload: dict[str, Any]) -> None:
             self._send_bytes(
@@ -209,7 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     api_key = os.environ.get("APIHOST_API_KEY", "")
-    proxy_token = os.environ.get("VIEWER_PROXY_TOKEN", "")
+    token_path = Path.home() / ".codex" / "viewer-proxy-token"
+    proxy_token = os.environ.get("VIEWER_PROXY_TOKEN") or read_proxy_token_file(token_path)
     if not api_key:
         logger.error("APIHOST_API_KEY не задан; proxy не запущен")
         return 1

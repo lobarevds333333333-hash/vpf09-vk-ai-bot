@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Python = Join-Path $RepositoryRoot ".venv\Scripts\python.exe"
 $HealthUrl = "http://127.0.0.1:$Port/health"
+$TokenFile = Join-Path $HOME ".codex\viewer-proxy-token"
 
 function Test-ProxyHealth {
     try {
@@ -28,8 +29,13 @@ if ([string]::IsNullOrWhiteSpace($env:APIHOST_API_KEY)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:VIEWER_PROXY_TOKEN)) {
-    Write-Error "VIEWER_PROXY_TOKEN is not set"
-    exit 1
+    if (Test-Path -LiteralPath $TokenFile) {
+        $env:VIEWER_PROXY_TOKEN = (Get-Content -LiteralPath $TokenFile -Raw).Trim()
+    }
+    else {
+        Write-Error "VIEWER_PROXY_TOKEN is not set"
+        exit 1
+    }
 }
 
 if (-not (Test-Path -LiteralPath $Python)) {
