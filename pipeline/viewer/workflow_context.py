@@ -194,6 +194,11 @@ def prepare_context(
             "разделите PR на меньшие изменения"
         )
 
+    changed_files = _changed_files(
+        repository=repository,
+        number=number,
+        github_get=get,
+    )
     final = _load_pull_request_details(
         repository=repository,
         number=number,
@@ -211,11 +216,6 @@ def prepare_context(
         raise ContextError("PR title пуст или имеет неверный тип")
     if not isinstance(body, str):
         raise ContextError("PR body имеет неверный тип")
-    changed_files = _changed_files(
-        repository=repository,
-        number=number,
-        github_get=get,
-    )
     return PullRequestContext(
         number=number,
         title=title.strip(),
