@@ -91,6 +91,12 @@ class ApiHostClientTest(unittest.TestCase):
         self.assertEqual(APIHOST_RESPONSES_URL, request.full_url)
         self.assertEqual("claude-opus-5.5", payload["model"])
         self.assertEqual({"effort": "high"}, payload["reasoning"])
+        self.assertEqual("json_schema", payload["text"]["format"]["type"])
+        self.assertTrue(payload["text"]["format"]["strict"])
+        self.assertEqual(
+            "viewer_verdict",
+            payload["text"]["format"]["name"],
+        )
         self.assertEqual("Bearer test-secret", request.get_header("Authorization"))
         self.assertEqual(15, call.call_args.kwargs["timeout"])
 
