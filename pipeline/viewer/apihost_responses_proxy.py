@@ -20,7 +20,7 @@ DEFAULT_PORT = 8791
 DEFAULT_UPSTREAM_BASE_URL = "https://api.apihost.one/v1"
 MAX_REQUEST_BYTES = 10 * 1024 * 1024
 FORBIDDEN_FIELDS = {"client_metadata", "namespace", "web_search"}
-REMOVED_TOOL_TYPES = {"web_search", "web_search_preview"}
+REMOVED_TOOL_TYPES = {"namespace", "web_search", "web_search_preview"}
 logger = logging.getLogger(__name__)
 
 
@@ -38,8 +38,6 @@ def sanitize_responses_payload(value: Any) -> Any:
                 isinstance(tool, dict) and tool.get("type") in REMOVED_TOOL_TYPES
             )
         ]
-    if "stream" in sanitized:
-        sanitized["stream"] = False
     return sanitized
 
 
@@ -132,12 +130,6 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
             if self.path != "/v1/responses":
                 self._send_json(404, {"error": "not found"})
                 return
-            if not self._local_auth_ok():
-                return
-            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
-            if content_type.lower() != "application/json":
-                self._send_json(415, {"error": "application/json required"})
-                return
             content_length = self.headers.get("Content-Length")
             try:
                 length = int(content_length or "0")
@@ -148,6 +140,12 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                 self._send_json(413, {"error": "request body size rejected"})
                 return
             raw_body = self.rfile.read(length)
+            if not self._local_auth_ok():
+                return
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+            if content_type.lower() != "application/json":
+                self._send_json(415, {"error": "application/json required"})
+                return
             try:
                 payload = json.loads(raw_body)
             except json.JSONDecodeError:

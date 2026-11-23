@@ -18,7 +18,7 @@ from pipeline.viewer.apihost_responses_proxy import (
 from pipeline.viewer.install_coder_viewer import (
     ensure_viewer_proxy_token,
     render_agent_toml,
-    scheduled_task_command,
+    watchdog_command,
 )
 
 
@@ -69,6 +69,7 @@ class ResponsesSanitizerTest(unittest.TestCase):
                         "properties": {"namespace": {"type": "string"}},
                     },
                 },
+                {"type": "namespace"},
                 {"type": "web_search"},
                 {"type": "web_search_preview"},
             ]
@@ -81,10 +82,10 @@ class ResponsesSanitizerTest(unittest.TestCase):
         self.assertEqual("read_file", sanitized["tools"][0]["name"])
         self.assertIn("namespace", sanitized["tools"][0]["parameters"]["properties"])
 
-    def test_streaming_is_disabled_for_predictable_json_proxy_response(self) -> None:
+    def test_streaming_request_is_preserved(self) -> None:
         sanitized = sanitize_responses_payload({"stream": True, "input": "test"})
 
-        self.assertIs(False, sanitized["stream"])
+        self.assertIs(True, sanitized["stream"])
 
     def test_health_endpoint_works_without_upstream_request(self) -> None:
         server = self.start_proxy()
@@ -171,14 +172,11 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertEqual(first, values["VIEWER_PROXY_TOKEN"])
         self.assertEqual(first, read_proxy_token_file(token_path))
 
-    def test_watchdog_task_is_hidden_and_checks_proxy_each_minute(self) -> None:
-        command = scheduled_task_command("create", script_path=Path("pipeline/viewer/start_proxy.ps1"))
-        command_text = " ".join(command)
+    def test_watchdog_startup_is_hidden_and_uses_loop_script(self) -> None:
+        command_text = watchdog_command(script_path=Path("pipeline/viewer/watchdog.ps1"))
 
-        self.assertIn("MINUTE", command)
-        self.assertIn("1", command)
         self.assertIn("-WindowStyle Hidden", command_text)
-        self.assertIn("start_proxy.ps1", command_text)
+        self.assertIn("watchdog.ps1", command_text)
 
     def test_start_script_is_hidden_and_waits_for_health(self) -> None:
         script = Path("pipeline/viewer/start_proxy.ps1").read_text("utf-8")
@@ -188,7 +186,13 @@ class CoderViewerInstallerTest(unittest.TestCase):
         self.assertIn("/health", script)
         self.assertIn("VIEWER_PROXY_TOKEN", script)
         self.assertIn("viewer-proxy-token", script)
+        self.assertIn('GetEnvironmentVariable(\n        "APIHOST_API_KEY"', script)
         self.assertIn("did not become healthy", script)
+
+        watchdog = Path("pipeline/viewer/watchdog.ps1").read_text("utf-8")
+        self.assertIn("CodexApiHostProxyWatchdog", watchdog)
+        self.assertIn("start_proxy.ps1", watchdog)
+        self.assertIn("IntervalSeconds", watchdog)
 
 
 if __name__ == "__main__":
